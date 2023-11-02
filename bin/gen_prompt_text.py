@@ -20,6 +20,7 @@ def esc_format(*args):
     return '\\033[{}m'.format(';'.join(args))
 
 codes = {
+    'RESET':       '0',
     'BLACK':       '30',
     'RED':         '31',
     'GREEN':       '32',
@@ -58,10 +59,17 @@ def concat(str, color_only=False):
         prompt_bnw += str
 
 def top_of_stack_to_result():
-    #The order the're written seems to matter. Bold won't work
-    #unless at the end.
     e = stack[-1]
-    concat(esc_format(e['color'], e['dark'], e['under'], e['bold']), True)
+    # There's an ugly issue with some terminals, where they won't properly disable
+    # bold. On Ubuntu, you'll likely see a double-underline when you send the
+    # escape(21). I feel like doing a full reset at the beginning of EVERY output
+    # might be sensible...
+    if('bold' in e and e['bold'] == codes['NO_BOLD']):
+        concat(esc_format(codes['RESET'], e['color'], e['dark'], e['under']), True)
+    else:
+        #The order the're written seems to matter. Bold won't work
+        #unless at the end.
+        concat(esc_format(e['color'], e['dark'], e['under'], e['bold']), True)
 
 def push_state(**kwargs):
     entry = stack[-1].copy()
@@ -116,7 +124,7 @@ def context():
 clock = datetime.now().strftime('%H:%M')
 pwd = os.environ['PWD']
 if len(pwd) > 37:
-    pwd = '...' + pwd[-37:]
+    pwd = '...' + pwd[-35:]
 
 bashrc_xtras_path = os.path.join(os.environ['HOME'], '.bashrc_xtras')
 stale_xtras_file = False

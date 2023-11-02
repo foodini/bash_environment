@@ -30,8 +30,7 @@ pathpost "$HOME/bin"
 
 source ~/bin/color_swatch
 
-export PC_PREFERRED=$PC_WHITE
-export ESC_PREFERRED=$ESC_WHITE
+export PREFERRED_PROMPT_COLOR=$PC_WHITE
 
 alias tb='ntt ~/bin/timer 9:00 && beep'
 alias timer='ntt ~/bin/timer'
@@ -72,8 +71,7 @@ rons-mbp.lan*|Rons-MacBook-Pro.local*|ronb-01XMD6R*)
 
   export GREPLOC=/usr/bin/grep
   export HOST_PLATFORM="OSX"
-  export PC_PREFERRED=$PC_GREEN
-  export ESC_PREFERRED=$ESC_GREEN
+  export PREFERRED_PROMPT_COLOR=GREEN
 
   alias up="cd \"\$(git rev-parse --show-toplevel)\""
   alias gpo='git push origin $BRANCH'
@@ -88,8 +86,7 @@ ron-desktop|ron-laptop)
 
   export PROCESS_AIRCAM_PATHS="True"
   export HOST_PLATFORM="LINUX"
-  export PC_PREFERRED=$PC_BROWN
-  export ESC_PREFERRED=$ESC_BROWN
+  export PREFERRED_PROMPT_COLOR=BROWN
 
   eval "$(register-python-argcomplete launch_pipeline)"
   eval "$(register-python-argcomplete skyrun)"
@@ -108,12 +105,13 @@ ron-desktop|ron-laptop)
   xset b 70
   pactl upload-sample /usr/share/sounds/ubuntu/stereo/bell.ogg bell.ogg
   ;;
-box481.*)
+ron-VirtualBox)
+  echo Setting up Linux Environment
   export BASHRC_XTRAS_TIMESTAMP=`stat -c%Y ~/.bashrc_xtras`
 
+  export GREPLOC=/usr/bin/grep
   export HOST_PLATFORM="LINUX"
-  export PC_PREFERRED=$PC_CYAN
-  export ESC_PREFERRED=$ESC_CYAN
+  export PREFERRED_PROMPT_COLOR=CYAN
   ;;
 esac
 ################################################################################
@@ -362,7 +360,7 @@ gen_prompt_text() {
 
     export GIT_BRANCH=`$GITLOC branch 2>&1 | grep '^\*' | cut -c3- | sed -e "s/HEAD detached at //"`
 
-    gen_prompt_text.py T $LAST_RETURN_VAL BROWN RED
+    gen_prompt_text.py T $LAST_RETURN_VAL $PREFERRED_PROMPT_COLOR RED
 
     source ~/tmp/prompt_$$.sh
     rm ~/tmp/prompt_$$.sh
