@@ -3,6 +3,7 @@
 # * de-dupe the PATH? (got the path_dedup util, but not sure i need it.)
 # * in git_do, you're using grep instead of $GREPLOC
 
+
 #set -xv
 
 if [ ! -d ~/tmp ]; then
