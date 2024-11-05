@@ -42,11 +42,11 @@ def mark_triples(val_str, direction):
         flop = not flop
     return retval
 
-frac_re = re.compile('(.*\.)(\d{4,})(.*)')
+frac_re = re.compile(r'(.*\.)(\d{4,})(.*)')
 #Tricky bit: the '.*?' is important, to keep the .* from greedy-matching. Otherwise, the \d{4,} will
 #only ever be able to match 4 values. My lazy-matching with the '.*?', we leave as many digits as 
 #possible for the second group.
-int_re = re.compile('(.*?)(\d{4,})(.*)')
+int_re = re.compile(r'(.*?)(\d{4,})(.*)')
 def mark_floats(val_str):
     for regex, direction in [(frac_re, left_to_right), (int_re, right_to_left)]:
         match = re.match(regex, val_str)
@@ -61,7 +61,7 @@ field_spec_exists = False
 if len(sys.argv) == 3 and sys.argv[1] == '-f':
     field_spec_exists = True
     for field_spec in sys.argv[2].split(','):
-        match = re.match('(\d*)-(\d*)', field_spec)
+        match = re.match(r'(\d*)-(\d*)', field_spec)
         if match:
             start = int(match.groups()[0]) or 0
             end = int(match.groups()[1]) or 999
@@ -70,8 +70,8 @@ if len(sys.argv) == 3 and sys.argv[1] == '-f':
         else:
             field_ids[int(field_spec)] = True
 
-re_fieldbreak = re.compile('\s*\S+\s*')
-re_digitgroups = re.compile('\d{4,}')
+re_fieldbreak = re.compile(r'\s*\S+\s*')
+re_digitgroups = re.compile(r'\d{4,}')
 
 for line in sys.stdin:
     line = line.rstrip()
