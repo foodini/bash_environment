@@ -9,6 +9,7 @@
 "hold down shift while you do it.
 
 set mouse=a
+set cursorline
 
 set ai tabstop=2 nu shiftwidth=2 backspace=eol,indent,start expandtab softtabstop=2 hlsearch incsearch noic
 :syntax on
@@ -34,5 +35,6 @@ endif
 :match ExtraWhitespace /\s\+$/
 
 if has("autocmd")
+  " I don't remember for the life of me what this line is for. I'll have to work it out later:
   au BufReadPost * if line("'\"") > 1 && line("'\"") <= line("$") | exe "normal! g'\"" | endif
 endif
