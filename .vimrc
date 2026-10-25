@@ -13,6 +13,8 @@ set cursorline
 
 set ai tabstop=2 nu shiftwidth=2 backspace=eol,indent,start expandtab softtabstop=2 hlsearch incsearch noic
 :syntax on
+:syntax sync fromstart
+:syntax sync ccomment
 :noremap <F2> :set ic! ic?<CR>
 :noremap <F3> :set nu! nu?<CR>
 :noremap <F4> :set ai! ai?<CR>
@@ -34,7 +36,8 @@ endif
 :highlight ExtraWhitespace ctermbg=red guibg=red
 :match ExtraWhitespace /\s\+$/
 
+"This insanity is why .vim opens a file and takes the cursor to where it was when you
+"last editing the file.
 if has("autocmd")
-  " I don't remember for the life of me what this line is for. I'll have to work it out later:
   au BufReadPost * if line("'\"") > 1 && line("'\"") <= line("$") | exe "normal! g'\"" | endif
 endif
