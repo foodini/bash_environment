@@ -133,7 +133,7 @@ if 'BASHRC_XTRAS_TIMESTAMP' in os.environ:
 stale_xtras_warning = (esc_format(codes['INVERT'], codes['RED']) + '⚙!' +
         esc_format(codes['NO_INVERT'], codes['WHITE']))
 
-concat('\[', True)
+concat('\\[', True)
 if stale_xtras_file:
     concat('{}╓'.format(stale_xtras_warning), True)
 else:
@@ -148,7 +148,7 @@ concat(clock, True)
 context()
 concat(pwd)
 pop_state()
-concat('\]', True)
+concat('\\]', True)
 
 #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 # Everything enclosed in \[ & \] is ignored in computing the width of the prompt, for the sake of
