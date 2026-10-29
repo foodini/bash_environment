@@ -1,0 +1,432 @@
+# bash_environment: interactive shell setup.
+#
+# Sourced from ~/.bashrc. Run ./install from this directory to set that up.
+#
+
+# Everything here is for interactive use. Non-interactive shells (scripts,
+# scp, rsync, `ssh host cmd`) get nothing, and above all no output.
+case $- in
+  *i*) ;;
+  *) return ;;
+esac
+
+# Find this file's own directory, so the repo can live anywhere.
+BASH_ENVIRONMENT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+export BASH_ENVIRONMENT_DIR
+
+# Gets us bash_environment_platform() and bash_environment_bash_ok()
+source "$BASH_ENVIRONMENT_DIR/lib/platform.sh"
+
+# Stop before anything that needs a newer bash. Everything above this point
+# must stay valid for bash 3.2 (the macOS /bin/bash).
+if ! bash_environment_bash_ok; then
+  echo "bash_environment: needs bash $BASH_ENVIRONMENT_MIN_BASH or newer;" \
+       "this is $BASH_VERSION. Not loading. Run $BASH_ENVIRONMENT_DIR/install for help."
+  return
+fi
+
+HOST_PLATFORM=$(bash_environment_platform)
+if [[ -z $HOST_PLATFORM ]]; then
+  echo "bash_environment: unrecognized platform: $(uname -a)"
+  HOST_PLATFORM=UNKNOWN
+fi
+export HOST_PLATFORM
+
+# Per-shell scratch files live in run/ and are named <something>_<pid>[.ext].
+# Each shell removes its own on exit (see bash_environment_on_exit). Clear out
+# any left behind by shells that died without cleaning up.
+BASH_ENVIRONMENT_RUN="$BASH_ENVIRONMENT_DIR/run"
+mkdir -p "$BASH_ENVIRONMENT_RUN"
+for run_file in "$BASH_ENVIRONMENT_RUN"/*_*; do
+  [[ -e $run_file ]] || continue
+  run_pid=${run_file##*_}
+  run_pid=${run_pid%%.*}
+  if [[ $run_pid =~ ^[0-9]+$ ]] && ! kill -0 "$run_pid" 2>/dev/null; then
+    rm -f "$run_file"
+  fi
+done
+unset run_file run_pid
+
+#if $1 isn't in the path, set the new path to be $2
+function pathmod() {
+  if [[ ":$PATH:" != *":$1:"* ]]; then
+    export PATH=$2
+  fi
+}
+
+function pathpre() {
+  pathmod "$1" "$1:$PATH"
+}
+
+function pathpost() {
+  pathmod "$1" "$PATH:$1"
+}
+
+pathpost "$BASH_ENVIRONMENT_DIR/bin"
+# ~/bin is for per-machine tools that aren't part of this repo.
+if [[ -d $HOME/bin ]]; then
+  pathpost "$HOME/bin"
+fi
+
+source "$BASH_ENVIRONMENT_DIR/bin/color_swatch"
+
+# The prompt color for this machine is set in ~/.bashrc (install offers to do
+# it). It's a 256-color number; see `color_swatch -g` for the choices.
+: "${PREFERRED_PROMPT_COLOR:=WHITE}"
+
+alias tb="ntt '$BASH_ENVIRONMENT_DIR/bin/timer' 9:00 && beep"
+alias timer="ntt '$BASH_ENVIRONMENT_DIR/bin/timer'"
+
+#less -R preserves color and underline formatting, which I use addictively:
+alias less='less -R'
+
+alias rerc="source '$BASH_ENVIRONMENT_DIR/bashrc_xtras'"
+alias virc="vi '$BASH_ENVIRONMENT_DIR/bashrc_xtras'"
+alias g='git status'
+alias gpo='git push origin "$GIT_BRANCH"'
+
+#go to the top level directory of the current git repo
+alias up='cd "$(git rev-parse --show-toplevel)"'
+
+export EDITOR='vim'
+
+#I get sick of doing grep --line-buffered. I can just do grep $B
+#TODO: This is an old way of going about this.... maybe grlb?
+export B=--line-buffered
+
+
+#TODO: These days, git is all I use. Is there a better way to accomplish what
+#      expand_scm is doing?
+#bind -x '"\eo":"expand_scm -o $COMP_TMP; source $COMP_TMP; rm $COMP_TMP"'
+bind -x '"\C-p":"expand_scm -c $COMP_TMP; source $COMP_TMP; rm $COMP_TMP"'
+bind -x '"\C-n":"expand_history $COMP_TMP; source $COMP_TMP; rm $COMP_TMP"'
+if [[ $HOST_PLATFORM == "OSX" ]]; then
+  # Option-h and Option-o, as the Mac's keyboard sends them.
+  bind -x '"˙":"expand_history $COMP_TMP; source $COMP_TMP"'
+  bind -x '"ø":"expand_scm -o $COMP_TMP; source $COMP_TMP"'
+fi
+
+FBH_DELIM="⦀"
+
+#TODO: WOW - take some time to look at the various things that you can set up with shopt.
+#      You can make ** match recursively, etc.
+shopt -s histappend
+
+
+HISTSIZE=5000
+HISTFILESIZE=10000
+
+case $TERM in
+  xterm|screen|xterm-256color)
+    SUPPORTS_STATUS_LINE="true"
+    ;;
+  *)
+    SUPPORTS_STATUS_LINE="false"
+    ;;
+esac
+
+export COMP_TMP="$BASH_ENVIRONMENT_RUN/comp_$$.sh"
+source "$BASH_ENVIRONMENT_DIR/bin/acd_func.sh"
+
+LOGFILE="$BASH_ENVIRONMENT_RUN/timer_$$"
+
+################################################################################
+#I want these commands to always use color, unless the command is being
+#redirected to a file.  I'm sure I'll have to make changes as I find issues.
+function a {
+  if [[ -t 1 ]]; then
+    if [[ "$HOST_PLATFORM" == "OSX" ]]; then
+      CLICOLOR_FORCE=1 ls -alG "$@" | comify -f 4
+    else
+      ls -al --color=always "$@" | comify -f 4
+    fi
+  else
+    ls -al "$@"
+  fi
+}
+
+function grep {
+  if [[ -t 1 ]]; then
+    command grep -E --color=always "$@"
+  else
+    command grep -E --color=never "$@"
+  fi
+}
+
+function fgrep {
+  if [[ -t 1 ]]; then
+    find . | command grep -E --color=always "$@"
+  else
+    find . | command grep -E --color=never "$@"
+  fi
+}
+
+#TODO: Needs work. How does the argument refer to the filename?
+# can you pipe for...done to an xargs?
+function git_do {
+    for x in `command git status | command grep -E '((modified)|(added)):' | tr -s " " | cut -f2 -d" "`; do echo $x; done
+}
+
+# TODO: add some examples of args attached to each grep.
+# fxgrep takes all args up to and including the first that doesn't start with
+# '-' and does a find . | grep [everything else] | xargs grep [first arg set]
+# If there's only one arg not beginning with '-': find . | xargs grep [args]
+#
+# I'd still like a way to point fxgrep at a directory, but I'm not sure what to
+# do with the syntax. fxgrep [directory] -- [first grep args] [second args] ?
+# Require each arg/argset to be quoted?
+function fxgrep {
+  # Only split on \n, so quoted args containing spaces stay whole and spaces in
+  # filenames don't cause splits. IFS also controls how ${ARRAY[*]} is joined.
+  # (This used to set IFS for the whole shell, as a side effect.)
+  local IFS=$'\n'
+  local -a FILE_FILTER=()
+  local -a LINE_FILTER=("-H")
+  local FOUND_DELIMITER="false"
+  local i WHEN_COLOR
+  for i in "$@"; do
+    if [[ $FOUND_DELIMITER == "false" ]]; then
+      LINE_FILTER+=($i)
+      if [[ ${i:0:1} != "-" ]]; then
+        FOUND_DELIMITER="true"
+      fi
+    else
+      FILE_FILTER+=($i)
+    fi
+  done
+
+  if [[ -t 1 ]]; then
+    WHEN_COLOR="always"
+  else
+    WHEN_COLOR="never"
+  fi
+  if [[ "$FILE_FILTER" == "" ]]; then
+    FILE_FILTER="^"
+  fi
+
+  find . -type f | command grep -v ^\./\.git\/ | command grep -E ${FILE_FILTER[*]} | ds | xargs -P 16 -L 64 command grep -E --color=$WHEN_COLOR ${LINE_FILTER[*]}
+}
+
+function pygrep() {
+  fxgrep -n "$@" '[.]py$'
+}
+
+function cgrep() {
+  fxgrep -n "$@" "[.]((h)|(cpp)|(s)|(cc)|(c[+]*))$"
+}
+
+function pbgrep() {
+  fxgrep -n "$@" '[.]proto$'
+}
+
+function ggrep() {
+  fxgrep -n "$@" '[.]go$'
+}
+
+#TODO: eliminate?
+#This one exists specifically to hilight output, so why protect it from
+#redirection?
+function hl {
+  command grep -E --color=always "(^)|($1)"
+}
+################################################################################
+
+# A shell started by this one would inherit TIMER_PID if it were exported, and
+# would then kill this shell's timer. So it isn't exported.
+if [[ -n $TIMER_PID ]]; then
+  kill "$TIMER_PID" 2>/dev/null
+fi
+rm -f "$LOGFILE"
+# Braces + 2>/dev/null hide the "[1] 12345" job notice; disown keeps the timer
+# out of `jobs`.
+{ bash_timer_manager "$LOGFILE" & } 2>/dev/null
+TIMER_PID=$!
+disown "$TIMER_PID"
+
+bash_environment_on_exit() {
+  if [[ -n $TIMER_PID ]]; then
+    kill "$TIMER_PID" 2>/dev/null
+  fi
+  rm -f "$BASH_ENVIRONMENT_RUN"/*_$$ "$BASH_ENVIRONMENT_RUN"/*_$$.*
+}
+trap bash_environment_on_exit EXIT
+
+#A bit hackish. It deletes the logfile that the bash_timer_manager uses, which causes it not to
+#run while the issued command ($@) is run. This is handy because bin/timer does its own magic with
+#the title bar and we don't want it fighting with this command.
+ntt() {
+  rm -f "$LOGFILE"
+  "$@"
+}
+
+# Formats a duration in microseconds the way python's str(timedelta) does
+# (e.g. "0:00:01.234567", "2 days, 3:04:05"), which is what
+# ~/full_bash_history has always contained.
+format_elapsed_us() {
+  local us=$1
+  local days=$(( us / 86400000000 ))
+  local secs=$(( us / 1000000 % 86400 ))
+  local frac=$(( us % 1000000 ))
+  local text
+  printf -v text '%d:%02d:%02d' $(( secs / 3600 )) $(( secs / 60 % 60 )) $(( secs % 60 ))
+  if (( frac != 0 )); then
+    printf -v text '%s.%06d' "$text" "$frac"
+  fi
+  if (( days == 1 )); then
+    text="1 day, $text"
+  elif (( days > 1 )); then
+    text="$days days, $text"
+  fi
+  echo "$text"
+}
+
+# (The trap handler)
+on_command_entered_handler() {
+    # gen_prompt_text TRIGGERS THE DEBUG TRAP!!! In fact, any simple command that is issued in this
+    # script will trigger the debug trap. It'll even trigger once for each echo in;
+    #     echo foo; echo bar; echo something else
+    # To deal with this, as soon as we are done generating the prompt, we set AT_PROMPT to True.
+    # When the debug trap fires, it must be the first time since the prompt was generated. In other
+    # words, when the user hit Enter.
+    if [ "$AT_PROMPT" == "True" ]; then
+        if [ "$BASH_COMMAND" == "gen_prompt_text" ]; then
+            SUPPRESS_LOG_LINE="True"
+        else
+            SUPPRESS_LOG_LINE="False"
+        fi
+
+        # The primary reason to get the command this way is to get what they actually typed, instead
+        # of the alias-interpolated version. ($BASH_COMMAND turns 'a' into 'ls -al')
+        if [[ $(history 1) =~ ^\ *[0-9]+\*?\ +(.*)$ ]]; then
+            COMMAND_LINE=${BASH_REMATCH[1]}
+        else
+            COMMAND_LINE=""
+        fi
+        # Same format as plain `date`. Builtins only: no processes started.
+        printf -v COMMAND_START_DATE '%(%a %b %e %H:%M:%S %Z %Y)T' -1
+        COMMAND_START_US=${EPOCHREALTIME//[!0-9]/}
+        PWD_AT_COMMAND_ENTRY=$PWD
+    fi
+
+    AT_PROMPT="False"
+}
+
+on_command_exited_handler() {
+    rm -f "$LOGFILE"
+
+    if [ "$SUPPRESS_LOG_LINE" == "False" ]; then
+        local end_us=${EPOCHREALTIME//[!0-9]/}
+        local elapsed_formatted
+        elapsed_formatted=$(format_elapsed_us $(( end_us - COMMAND_START_US )))
+
+        echo "$COMMAND_START_DATE$FBH_DELIM${elapsed_formatted}$FBH_DELIM$$$FBH_DELIM$GIT_BRANCH$FBH_DELIM$PWD_AT_COMMAND_ENTRY$FBH_DELIM$LAST_RETURN_VAL$FBH_DELIM$COMMAND_LINE" >> ~/full_bash_history
+    fi
+}
+
+gen_prompt_text() {
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    # DON'T PUT ANYTHING BEFORE THE CAPTURE OF LAST_RETURN_VAL!!!!
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    LAST_RETURN_VAL="$?"
+    on_command_exited_handler
+
+    history -a
+
+    # The branch name, or the short commit hash when HEAD is detached. Empty
+    # outside a repository.
+    GIT_BRANCH=$(command git symbolic-ref --short -q HEAD 2>/dev/null ||
+                 command git rev-parse --short HEAD 2>/dev/null)
+    export GIT_BRANCH
+
+    eval "$(gen_prompt_text.py "$LAST_RETURN_VAL" "$PREFERRED_PROMPT_COLOR" RED)"
+
+    if [ "$SUPPORTS_STATUS_LINE" == "true" ]; then
+        ITERM2_PROMPT_MARK_TYPE=`type -t iterm2_prompt_mark`
+        if [ "$ITERM2_PROMPT_MARK_TYPE" == "function" ]; then
+            #Add the info that iTerm2 Shell Integration needs for mark navigation. (You can always
+            #add one, manually, with shift-command-m) Navigate w/ shift-command-arrows
+            PS1="\[\033]0;$PROMPT_BNW\a\]\[$(iterm2_prompt_mark)\]$PROMPT_COL"
+        else
+            PS1="\[\033]0;$PROMPT_BNW\a\]$PROMPT_COL"
+        fi
+    else
+        PS1=$PROMPT_COL
+    fi
+
+    AT_PROMPT="True"
+}
+
+case $HOST_PLATFORM in
+  OSX) BASHRC_XTRAS_TIMESTAMP=$(stat -f %m "$BASH_ENVIRONMENT_DIR/bashrc_xtras") ;;
+  *)   BASHRC_XTRAS_TIMESTAMP=$(stat -c %Y "$BASH_ENVIRONMENT_DIR/bashrc_xtras") ;;
+esac
+export BASHRC_XTRAS_TIMESTAMP
+
+PROMPT_COMMAND='gen_prompt_text'
+trap 'on_command_entered_handler' DEBUG
+
+function git() {
+    local GIT_PAUSE="false"
+    if [[ "$1" == "clone" && "$2" != *"ssh://git@github"* ]]; then
+        echo !!!!!!!!!!! are you sure you are cloning properly? !!!!!!!!
+        echo !!!!!!!!!! maybe.... git clone ssh://git@github.... !!!!!!!
+        GIT_PAUSE="true"
+    fi
+    local -a patterns=("^\+.*ipdb" "^\+.*DO.NOT.SUBMIT" "^\+.{120}")
+    local SKIP="true"
+    local ARGS=""
+    local PATTERN RESULT
+    if [[ "$1" == "add" ]]; then
+        ARGS=""
+        SKIP="false"
+    elif [[ "$1" == "commit" ]]; then
+        ARGS="--staged"
+        SKIP="false"
+    fi
+
+    if [[ "$SKIP" == "false" ]]; then
+        for PATTERN in "${patterns[@]}"; do
+            RESULT=`command git diff $ARGS | command grep -E -e "$PATTERN"`
+            if [[ "$RESULT" != "" ]]; then
+                echo !!!!!!!!!!!!!!!!!!!!!   what\'s $PATTERN doing in there\?   !!!!!!!!!!!!!!!!!!
+                echo $RESULT
+                GIT_PAUSE="true"
+            fi
+        done
+        if [[ "$GIT_PAUSE" == "true" ]]; then
+            sleep 3
+        fi
+    fi
+
+    command git "$@"
+}
+
+function figit() {
+    TXT=$1
+    EMO1=$2
+    EMO2=$3
+    #figlet -f 3x5 $TXT | sed -e "s/ /:$EMO1:/g" | sed -e "s/#/:$EMO2:/g" | tail -5
+    figlet -f banner $TXT | sed -e "s/ /:$EMO1:/g" | sed -e "s/#/:$EMO2:/g" | tail -8
+}
+
+bing() {
+  ping "$@" | grep --line-buffered bytes.from.*icmp_seq | beep
+}
+
+shing() {
+    (
+        declare -i counter
+
+        counter=0
+        while true; do
+            (
+                #I need to pass on "Could not resolve hostname", etc. Essentially, any time I get
+                #an error return, that should be displayed to the user.
+                rtt=`(time (ssh "$@" echo >> /dev/null)) 2>&1 | grep -v 'ost is down' | grep real | cut -c6-`
+                echo $counter: $rtt
+            ) &
+            counter=$counter+1
+            sleep 1
+        done
+    )
+}

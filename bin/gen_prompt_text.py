@@ -3,18 +3,18 @@
 
 #https://misc.flogisoft.com/bash/tip_colors_and_formatting
 
-import argparse
+# usage: gen_prompt_text.py $? NO_ERROR_FORMAT ERROR_FORMAT
+#
+# A format is a comma-separated list of names from `codes` below and/or a
+# 256-color number (0-255), e.g. "GREEN,BOLD" or "114" or "114,UNDER".
+#
+# Prints shell assignments for PROMPT_COL (the colored prompt, suitable for
+# PS1) and PROMPT_BNW (the same text without color, used for the window
+# title). The caller is expected to eval the output.
+
 from datetime import datetime
 import os
 import sys
-
-# gen_prompt_text [T|F] $? GREEN,BOLD BLUE,UNDER origin/master 
-
-#esc_format = '\\[\\033[{}m\\]'
-#esc_format = '\[\033[{}m\]'
-#esc_format = '\033[{}m'
-#esc_format = '\\033[{}m'
-#esc_format = '[{}]'
 
 def esc_format(*args):
     return '\\033[{}m'.format(';'.join(args))
@@ -39,10 +39,9 @@ codes = {
     'NO_INVERT':   '27'
 }
 
-in_color = sys.argv[1] == 'T'
-previous_retval = sys.argv[2]
-no_error_format = sys.argv[3]
-error_format = sys.argv[4]
+previous_retval = sys.argv[1]
+no_error_format = sys.argv[2]
+error_format = sys.argv[3]
 
 stack = [
     {'color': codes['WHITE'], 'bold': codes['NO_BOLD'],
@@ -80,7 +79,9 @@ def push_state(**kwargs):
 def push_state_from_string(str):
     args = {}
     for fmt in str.split(','):
-        if 'BOLD' in fmt:
+        if fmt.isdigit() and 0 <= int(fmt) <= 255:
+            args['color'] = '38;5;' + fmt
+        elif 'BOLD' in fmt:
             args['bold'] = codes[fmt]
         elif 'UNDER' in fmt:
             args['under'] = codes[fmt]
@@ -103,33 +104,30 @@ def space():
 
 def context():
     space()
-    emit_branch = 'GIT_BRANCH' in os.environ and os.environ['GIT_BRANCH']
-    emit_robot = (
-            'ANKI_ROBOT_ALIAS' in os.environ and
-            'ANKI_ROBOT_COLOR' in os.environ and
-            os.environ['ANKI_ROBOT_ALIAS'])
-    if emit_branch or emit_robot:
+    branch = os.environ.get('GIT_BRANCH', '')
+    if branch:
         concat('(')
-        if emit_branch:
-            concat(os.environ['GIT_BRANCH'])
-        if emit_robot:
-            if emit_branch:
-                space()
-            push_state_from_string(os.environ['ANKI_ROBOT_COLOR'])
-            concat(os.environ['ANKI_ROBOT_ALIAS'])
-            pop_state()
+        concat(branch)
         concat(')')
         space()
+
+def shell_quote(s):
+    return "'" + s.replace("'", "'\\''") + "'"
 
 clock = datetime.now().strftime('%H:%M')
 pwd = os.environ['PWD']
 if len(pwd) > 37:
     pwd = '...' + pwd[-35:]
 
-bashrc_xtras_path = os.path.join(os.environ['HOME'], '.bashrc_xtras')
 stale_xtras_file = False
-if 'BASHRC_XTRAS_TIMESTAMP' in os.environ:
-    stale_xtras_file = os.stat(bashrc_xtras_path)[8] > int(os.environ['BASHRC_XTRAS_TIMESTAMP'])
+env_dir = os.environ.get('BASH_ENVIRONMENT_DIR', '')
+timestamp = os.environ.get('BASHRC_XTRAS_TIMESTAMP', '')
+if env_dir and timestamp:
+    try:
+        bashrc_xtras_path = os.path.join(env_dir, 'bashrc_xtras')
+        stale_xtras_file = int(os.stat(bashrc_xtras_path).st_mtime) > int(timestamp)
+    except (OSError, ValueError):
+        pass
 stale_xtras_warning = (esc_format(codes['INVERT'], codes['RED']) + '⚙!' +
         esc_format(codes['NO_INVERT'], codes['WHITE']))
 
@@ -161,11 +159,5 @@ if stale_xtras_file:
 else:
     concat('\\n╙', True)
 
-if in_color:
-    esc_format('0')
-
-filename = (os.environ['HOME'] + '/tmp/prompt_' +
-        str(os.getppid()) + '.sh')
-with open(filename, 'w') as fd:
-    fd.write(u'export PROMPT_COL="' + prompt_col + u'"' + u'\n')
-    fd.write('export PROMPT_BNW="' + prompt_bnw + '"' + '\n')
+print('PROMPT_COL=' + shell_quote(prompt_col))
+print('PROMPT_BNW=' + shell_quote(prompt_bnw))

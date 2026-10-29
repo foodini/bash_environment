@@ -24,7 +24,6 @@ expander = expand.Expand(sys.argv[1])
 token_to_expand = expander.get_token()
 
 history_file = os.environ['HOME'] + '/.bash_history'
-tmp_file = os.environ['HOME'] + '/tmp/expand_history.tmp'
 token0 = expander.get_token(0)
 re_token_finder = re.compile('%s\S*' % token_to_expand)
 #match tokens of one or more non-whitespace characters:

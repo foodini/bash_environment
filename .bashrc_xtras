@@ -26,19 +26,20 @@ function pathpost() {
   pathmod "$1" "$PATH:$1"
 }
 
+pathpost "$HOME/bash_environment/bin"
 pathpost "$HOME/bin"
 
-source ~/bin/color_swatch
+source ~/bash_environment/bin/color_swatch
 
 export PREFERRED_PROMPT_COLOR=$PC_WHITE
 
-alias tb='ntt ~/bin/timer 9:00 && beep'
-alias timer='ntt ~/bin/timer'
+alias tb='ntt ~/bash_environment/bin/timer 9:00 && beep'
+alias timer='ntt ~/bash_environment/bin/timer'
 #less -R preserves color and underline formatting, which I use addictively:
 alias less='less -R'
-alias rerc='source ~/.bashrc_xtras'
-alias virc='vi ~/.bashrc_xtras'
-alias vilo='vi ~/.bash_logout_xtras'
+alias rerc='source ~/bash_environment/.bashrc_xtras'
+alias virc='vi ~/bash_environment/.bashrc_xtras'
+alias vilo='vi ~/bash_environment/.bash_logout_xtras'
 alias g='git status'
 alias gpo='git push origin $BRANCH'
 
@@ -64,7 +65,7 @@ HISTFILESIZE=10000
 case $HOSTNAME in
 rons-mbp.lan*|Rons-MacBook-Pro.local*|ronb-01XMD6R*)
   echo SETTING UP MAC
-  export BASHRC_XTRAS_TIMESTAMP=`stat -f %m ~/.bashrc_xtras`
+  export BASHRC_XTRAS_TIMESTAMP=`stat -f %m ~/bash_environment/.bashrc_xtras`
 
   ssh-add -K ~/.ssh/id_rsa_victor_shared 2> /dev/null > /dev/null
   ssh-agent > /dev/null
@@ -82,7 +83,7 @@ rons-mbp.lan*|Rons-MacBook-Pro.local*|ronb-01XMD6R*)
 
   ;;
 ron-desktop|ron-laptop)
-  export BASHRC_XTRAS_TIMESTAMP=`stat -c%Y ~/.bashrc_xtras`
+  export BASHRC_XTRAS_TIMESTAMP=`stat -c%Y ~/bash_environment/.bashrc_xtras`
 
   export PROCESS_AIRCAM_PATHS="True"
   export HOST_PLATFORM="LINUX"
@@ -107,7 +108,7 @@ ron-desktop|ron-laptop)
   ;;
 ron-VirtualBox)
   echo Setting up Linux Environment
-  export BASHRC_XTRAS_TIMESTAMP=`stat -c%Y ~/.bashrc_xtras`
+  export BASHRC_XTRAS_TIMESTAMP=`stat -c%Y ~/bash_environment/.bashrc_xtras`
 
   export GREPLOC=/usr/bin/grep
   export HOST_PLATFORM="LINUX"
@@ -130,7 +131,7 @@ if [ "$BASHPID" == "" ]; then
 fi
 
 export COMP_TMP="$HOME/tmp/$BASHPID.sh"
-source ~/bin/acd_func.sh
+source ~/bash_environment/bin/acd_func.sh
 
 LOGFILE="$HOME/bashlogs/$BASHPID"
 

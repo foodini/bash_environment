@@ -1,15 +1,11 @@
-/*
-/.bash_remote
-!.bashrc_xtras
-!/bin**
-!/projecteuler**
-!.gitignore
-!git_todo
-!.vimrc
-!.pyc
+# Per-shell scratch files (see bashrc_xtras).
+/run/
 
-#Fix this so you don't have to name every one:
-bin/wclive
-bin/src/wclive
-bin/status_time
-bin/src/status_time
+# Build outputs from bin/src (see bin/src/Makefile).
+/bin/wclive
+/bin/status_time
+/bin/src/wclive
+/bin/src/status_time
+
+__pycache__/
+*.pyc

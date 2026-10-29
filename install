@@ -1,0 +1,581 @@
+#!/usr/bin/env bash
+#
+# install: sets up (or checks) bash_environment on this machine.
+#
+# Run it from anywhere: ./install, or /path/to/bash_environment/install.
+# Safe to rerun at any time; on a finished install it just reports "ok".
+#
+# Each step checks one thing. When something is missing, it says what and
+# offers to fix it ([Y/n]; Enter means yes). Before the first change to any
+# file, that file is copied to <file>.pre-bash_environment.<timestamp>.
+# Answering yes to everything gives a default installation.
+#
+# Steps:
+#   1. bash version (needs BASH_ENVIRONMENT_MIN_BASH, see lib/platform.sh)
+#   2. login shell is a new-enough bash
+#   3. ~/.bashrc sets the prompt color and sources bashrc_xtras
+#   4. the file login shells read (~/.bash_profile etc.) sources ~/.bashrc
+#   5. ~/.vimrc sources vimrc
+#   6. ssh-agent (advice only, plus AddKeysToAgent in ~/.ssh/config)
+#   7. leftovers from the old everything-in-~ layout
+#   8. start real shells and confirm bashrc_xtras loads in each
+#
+# KEEP THIS UP TO DATE: any change to how bash_environment is wired into a
+# machine belongs here.
+
+################################################################################
+# Everything up to the version check must run under bash 3.2 (macOS /bin/bash).
+
+INSTALL_DIR=$(cd "$(dirname "$0")" && pwd -P)
+. "$INSTALL_DIR/lib/platform.sh"
+PLATFORM=$(bash_environment_platform)
+
+# Succeeds if $1 is a bash at least as new as BASH_ENVIRONMENT_MIN_BASH.
+bash_at_path_ok() {
+  [ -x "$1" ] || return 1
+  "$1" -c ". '$INSTALL_DIR/lib/platform.sh' && bash_environment_bash_ok" 2>/dev/null
+}
+
+echo "bash_environment install ($INSTALL_DIR)"
+echo
+echo "1. bash version"
+if ! bash_environment_bash_ok; then
+  echo "  This is bash $BASH_VERSION ($BASH)."
+  echo "  bash_environment needs bash $BASH_ENVIRONMENT_MIN_BASH or newer."
+  if [ "$PLATFORM" = "OSX" ]; then
+    brew_bash=""
+    for candidate in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+      if bash_at_path_ok "$candidate"; then
+        brew_bash=$candidate
+        break
+      fi
+    done
+    if [ -n "$brew_bash" ]; then
+      echo "  A new enough Homebrew bash is already installed. Rerun with it:"
+      echo "      $brew_bash $0"
+    else
+      echo "  macOS's /bin/bash is 3.2 and Apple won't update it. Install"
+      echo "  Homebrew's bash:"
+      echo "      1. Install Homebrew, if needed: https://brew.sh"
+      echo "      2. brew install bash     (or: brew upgrade bash)"
+      echo "      3. Rerun this with the new bash:"
+      echo "         \$(brew --prefix)/bin/bash $0"
+    fi
+  else
+    echo "  Upgrade bash with your package manager, then rerun this."
+  fi
+  exit 1
+fi
+
+################################################################################
+# bash 5.2+ from here on.
+
+source "$INSTALL_DIR/bin/color_swatch"
+
+STAMP=$(date +%Y%m%d-%H%M%S)
+declare -a BACKED_UP=()
+declare -a REMAINING=()
+
+ok()      { printf '  \033[32mok\033[0m     %s\n' "$*"; }
+fixed()   { printf '  \033[32mfixed\033[0m  %s\n' "$*"; }
+todo()    { printf '  \033[33mtodo\033[0m   %s\n' "$*"; REMAINING+=("$*"); }
+note()    { printf '  \033[36mnote\033[0m   %s\n' "$*"; }
+section() { printf '\n%s\n' "$*"; }
+
+# Asks a yes/no question; Enter means yes. Always "no" if stdin isn't a
+# terminal, so a non-interactive run only reports.
+ask() {
+  local answer
+  [[ -t 0 ]] || return 1
+  read -r -p "         $1 [Y/n] " answer
+  [[ -z $answer || $answer == [Yy] || $answer == [Yy][Ee][Ss] ]]
+}
+
+# Shows a file's path with $HOME abbreviated to ~.
+pretty() {
+  local path=$1
+  if [[ $path == "$HOME"/* ]]; then
+    path="~/${path#"$HOME"/}"
+  fi
+  echo "$path"
+}
+
+# Copies $1 aside before its first change in this run.
+backup_once() {
+  local file=$1 done_file
+  [[ -e $file ]] || return 0
+  for done_file in "${BACKED_UP[@]}"; do
+    [[ $done_file == "$file" ]] && return 0
+  done
+  cp -p "$file" "$file.pre-bash_environment.$STAMP"
+  BACKED_UP+=("$file")
+  note "backed up $(pretty "$file") to $(pretty "$file.pre-bash_environment.$STAMP")"
+}
+
+# Appends lines ($2...) to file $1, making sure they start on a fresh line.
+append_lines() {
+  local file=$1
+  shift
+  backup_once "$file"
+  if [[ -s $file && $(tail -c 1 "$file") != "" ]]; then
+    echo >> "$file"
+  fi
+  printf '%s\n' "$@" >> "$file"
+}
+
+# Comments out the lines of $1 that match the extended regex $2. Writes the
+# file in place (rather than replacing it) so permissions and links survive.
+comment_out_matching() {
+  local file=$1 regex=$2 line
+  local tmp
+  backup_once "$file"
+  tmp=$(mktemp)
+  while IFS= read -r line || [[ -n $line ]]; do
+    if [[ $line =~ $regex ]]; then
+      printf '# (disabled by bash_environment install) %s\n' "$line"
+    else
+      printf '%s\n' "$line"
+    fi
+  done < "$file" > "$tmp"
+  cat "$tmp" > "$file"
+  rm -f "$tmp"
+}
+
+# How to refer to the repo from ~/.bashrc and ~/.vimrc: relative to $HOME when
+# it's inside it, so the line still works if the home directory moves.
+if [[ $INSTALL_DIR == "$HOME"/* ]]; then
+  SHELL_REPO_REF="\$HOME/${INSTALL_DIR#"$HOME"/}"
+  VIM_REPO_REF="~/${INSTALL_DIR#"$HOME"/}"
+else
+  SHELL_REPO_REF=$INSTALL_DIR
+  VIM_REPO_REF=$INSTALL_DIR
+fi
+
+ok "bash $BASH_VERSION ($BASH)"
+if [[ -z $PLATFORM ]]; then
+  todo "unrecognized platform: $(uname -a). Treating it like Linux; please fix lib/platform.sh."
+  PLATFORM=LINUX
+else
+  ok "platform: $PLATFORM"
+fi
+
+################################################################################
+section "2. login shell"
+
+current_login_shell() {
+  local user
+  user=$(id -un)
+  if [[ $PLATFORM == "OSX" ]]; then
+    dscl . -read "/Users/$user" UserShell 2>/dev/null | awk '{print $2}'
+  else
+    getent passwd "$user" 2>/dev/null | cut -d: -f7
+  fi
+}
+
+LOGIN_SHELL=$(current_login_shell)
+if [[ -z $LOGIN_SHELL ]]; then
+  LOGIN_SHELL=$SHELL
+fi
+
+if bash_at_path_ok "$LOGIN_SHELL" && "$LOGIN_SHELL" -c '[ -n "$BASH_VERSION" ]' 2>/dev/null; then
+  ok "login shell is $LOGIN_SHELL"
+else
+  echo "         Your login shell is $LOGIN_SHELL, which isn't bash $BASH_ENVIRONMENT_MIN_BASH+."
+  echo "         Terminal windows (and ssh logins) start your login shell."
+  shell_fixed="false"
+  if ! command grep -qx "$BASH" /etc/shells 2>/dev/null; then
+    echo "         $BASH must be listed in /etc/shells before it can be a login shell."
+    if ask "Add $BASH to /etc/shells? (uses sudo)"; then
+      echo "$BASH" | sudo tee -a /etc/shells > /dev/null && fixed "added $BASH to /etc/shells"
+    fi
+  fi
+  if command grep -qx "$BASH" /etc/shells 2>/dev/null; then
+    if ask "Change your login shell to $BASH? (runs chsh; asks your password)"; then
+      if chsh -s "$BASH"; then
+        fixed "login shell is now $BASH"
+        LOGIN_SHELL=$BASH
+        shell_fixed="true"
+      fi
+    fi
+  fi
+  if [[ $shell_fixed != "true" ]]; then
+    todo "make $BASH your login shell: add it to /etc/shells, then chsh -s $BASH"
+    if [[ $PLATFORM == "OSX" ]]; then
+      note "Alternatively, set Terminal (Settings > General > Shells open with) or"
+      note "iTerm (Settings > Profiles > General > Command) to run $BASH -l."
+    fi
+    # Test with the new bash anyway, so the remaining checks mean something.
+    LOGIN_SHELL=$BASH
+  fi
+fi
+
+################################################################################
+section "3. ~/.bashrc"
+
+BASHRC="$HOME/.bashrc"
+
+if [[ ! -e $BASHRC ]]; then
+  if ask "There's no ~/.bashrc. Create one?"; then
+    touch "$BASHRC"
+    fixed "created ~/.bashrc"
+  else
+    todo "create ~/.bashrc"
+  fi
+fi
+
+if [[ -e $BASHRC ]]; then
+  # Lines from the old layout, which kept bashrc_xtras in ~ as .bashrc_xtras.
+  old_line_regex='^[[:space:]]*[^#[:space:]].*/\.bashrc_xtras'
+  if command grep -Eq "$old_line_regex" "$BASHRC"; then
+    echo "         ~/.bashrc still sources the old ~/.bashrc_xtras:"
+    command grep -E "$old_line_regex" "$BASHRC" | sed 's/^/             /'
+    if ask "Comment that out?"; then
+      comment_out_matching "$BASHRC" "$old_line_regex"
+      fixed "commented out the old .bashrc_xtras line"
+    else
+      todo "remove the line sourcing ~/.bashrc_xtras from ~/.bashrc"
+    fi
+  fi
+
+  # Prompt color.
+  color_regex='^[[:space:]]*(export[[:space:]]+)?PREFERRED_PROMPT_COLOR='
+  if command grep -Eq "$color_regex" "$BASHRC"; then
+    ok "prompt color: $(command grep -E "$color_regex" "$BASHRC" | tail -1 | sed 's/^[^=]*=//')"
+  elif [[ ! -t 0 ]]; then
+    todo "choose a prompt color (rerun install from a terminal)"
+  else
+    # Show a prompt-like sample in color $1 next to the red "last command
+    # failed" version.
+    show_color_sample() {
+      local sample
+      sample="$(date +%H:%M) (master) ~/somewhere"
+      printf '         \033[0;37m╓\033[38;5;%sm%s\033[0m      \033[0;37m╓\033[31m%s\033[0m   (red: after an error)\n' \
+        "$1" "$sample" "$sample"
+    }
+
+    declare -a allowed_colors=()
+    for color in $(seq 16 255); do
+      if prompt_color_ok "$color"; then
+        allowed_colors+=("$color")
+      fi
+    done
+    host=$(hostname -s 2>/dev/null || hostname)
+    host_hash=$(printf '%s' "$host" | cksum | cut -d' ' -f1)
+    chosen_color=${allowed_colors[host_hash % ${#allowed_colors[@]}]}
+
+    echo "         The prompt color identifies this machine. The default comes from"
+    echo "         its hostname ($host):"
+    show_color_sample "$chosen_color"
+    if ! ask "Use color $chosen_color?"; then
+      echo
+      show_prompt_color_grid | sed 's/^/         /'
+      echo
+      while true; do
+        read -r -p "         Color number (Enter for $chosen_color): " typed_color
+        if [[ -z $typed_color ]]; then
+          break
+        fi
+        if ! prompt_color_ok "$typed_color"; then
+          echo "         $typed_color isn't one of the colors shown."
+          continue
+        fi
+        show_color_sample "$typed_color"
+        if ask "Use color $typed_color?"; then
+          chosen_color=$typed_color
+          break
+        fi
+      done
+    fi
+    append_lines "$BASHRC" \
+      "" \
+      "# This machine's prompt color for bash_environment (see: color_swatch -g)." \
+      "PREFERRED_PROMPT_COLOR=$chosen_color"
+    fixed "prompt color: $chosen_color"
+  fi
+
+  # Source line.
+  source_regex='^[[:space:]]*(source|\.)[[:space:]].*/bashrc_xtras'
+  if command grep -Eq "$source_regex" "$BASHRC"; then
+    ok "~/.bashrc sources bashrc_xtras"
+  elif ask "Add 'source \"$SHELL_REPO_REF/bashrc_xtras\"' to ~/.bashrc?"; then
+    append_lines "$BASHRC" \
+      "" \
+      "# bash_environment (interactive setup; installed by $SHELL_REPO_REF/install)" \
+      "source \"$SHELL_REPO_REF/bashrc_xtras\""
+    fixed "~/.bashrc sources bashrc_xtras"
+  else
+    todo "add to ~/.bashrc:  source \"$SHELL_REPO_REF/bashrc_xtras\""
+  fi
+fi
+
+################################################################################
+section "4. login shells"
+
+# Login shells (ssh logins; every window on macOS Terminal and iTerm) read
+# only the first of these that exists, and never ~/.bashrc on their own.
+LOGIN_FILE=""
+for candidate in .bash_profile .bash_login .profile; do
+  if [[ -e $HOME/$candidate ]]; then
+    LOGIN_FILE="$HOME/$candidate"
+    break
+  fi
+done
+
+login_snippet=(
+  ""
+  "# Login shells don't read ~/.bashrc on their own; interactive setup lives there."
+  "if [ -f ~/.bashrc ]; then . ~/.bashrc; fi"
+)
+
+if [[ -z $LOGIN_FILE ]]; then
+  echo "         None of ~/.bash_profile, ~/.bash_login or ~/.profile exists, so login"
+  echo "         shells won't load ~/.bashrc."
+  if ask "Create ~/.bash_profile to source ~/.bashrc?"; then
+    printf '%s\n' "${login_snippet[@]:1}" > "$HOME/.bash_profile"
+    LOGIN_FILE="$HOME/.bash_profile"
+    fixed "created ~/.bash_profile"
+  else
+    todo "create ~/.bash_profile containing: if [ -f ~/.bashrc ]; then . ~/.bashrc; fi"
+  fi
+else
+  bashrc_ref_regex='(^|[;&|[:space:]])(source|\.)[[:space:]]+["'"'"']?(~|\$HOME|\$\{HOME\}|/[^[:space:]]*)/\.bashrc["'"'"']?([[:space:];]|$)'
+  if command grep -Ev '^[[:space:]]*#' "$LOGIN_FILE" | command grep -Eq "$bashrc_ref_regex"; then
+    ok "login shells read $(pretty "$LOGIN_FILE"), which sources ~/.bashrc"
+  elif ask "Login shells read $(pretty "$LOGIN_FILE"), which doesn't source ~/.bashrc. Add that?"; then
+    append_lines "$LOGIN_FILE" "${login_snippet[@]}"
+    fixed "$(pretty "$LOGIN_FILE") sources ~/.bashrc"
+  else
+    todo "make $(pretty "$LOGIN_FILE") source ~/.bashrc"
+  fi
+
+  # A common trap: once ~/.bash_profile exists, bash ignores ~/.profile.
+  if [[ $LOGIN_FILE != "$HOME/.profile" && -e $HOME/.profile ]] &&
+     command grep -Evq '^[[:space:]]*(#|$)' "$HOME/.profile"; then
+    note "~/.profile has settings, but bash ignores it because $(pretty "$LOGIN_FILE")"
+    note "exists. Move anything you need from it into $(pretty "$LOGIN_FILE")."
+  fi
+fi
+
+################################################################################
+section "5. vim"
+
+# vim reads only the first of these that exists.
+if [[ -e $HOME/.vimrc || -L $HOME/.vimrc ]]; then
+  VIMRC="$HOME/.vimrc"
+  if [[ -e $HOME/.vim/vimrc ]]; then
+    note "~/.vim/vimrc exists but vim ignores it, because ~/.vimrc exists."
+  fi
+elif [[ -e $HOME/.vim/vimrc ]]; then
+  VIMRC="$HOME/.vim/vimrc"
+else
+  VIMRC="$HOME/.vimrc"
+fi
+
+# Prints the absolute, symlink-free path that symlink $1 points at. (No
+# readlink -f: older macOS doesn't have it.)
+resolve_link() {
+  local target
+  target=$(readlink "$1")
+  if [[ $target != /* ]]; then
+    target="$(dirname "$1")/$target"
+  fi
+  echo "$(cd "$(dirname "$target")" 2>/dev/null && pwd -P)/$(basename "$target")"
+}
+
+vim_source_regex='^[[:space:]]*:?so(urce)?[[:space:]].*/vimrc[[:space:]]*$'
+if [[ -L $VIMRC && $(resolve_link "$VIMRC") == "$INSTALL_DIR/vimrc" ]]; then
+  ok "$(pretty "$VIMRC") is a link to vimrc"
+elif [[ -e $VIMRC ]] && command grep -Eq "$vim_source_regex" "$VIMRC"; then
+  ok "$(pretty "$VIMRC") sources vimrc"
+else
+  if [[ -e $VIMRC ]] && cmp -s "$VIMRC" "$INSTALL_DIR/vimrc"; then
+    note "$(pretty "$VIMRC") is a plain copy of vimrc, so it won't pick up changes."
+  fi
+  if ask "Add 'source $VIM_REPO_REF/vimrc' to $(pretty "$VIMRC")?"; then
+    append_lines "$VIMRC" "source $VIM_REPO_REF/vimrc"
+    fixed "$(pretty "$VIMRC") sources vimrc"
+  else
+    todo "add to $(pretty "$VIMRC"):  source $VIM_REPO_REF/vimrc"
+  fi
+fi
+
+################################################################################
+section "6. ssh-agent"
+
+# Keys get loaded into the agent the first time they're used, instead of by
+# ssh-add lines in a shell startup file.
+SSH_CONFIG="$HOME/.ssh/config"
+if [[ -e $SSH_CONFIG ]] && command grep -Eiq '^[[:space:]]*AddKeysToAgent[[:space:]]+yes' "$SSH_CONFIG"; then
+  ok "~/.ssh/config has AddKeysToAgent yes"
+else
+  if [[ $PLATFORM == "OSX" ]]; then
+    ssh_block=(
+      ""
+      "# Load keys into the agent on first use; keep passphrases in the Keychain."
+      "# (IgnoreUnknown keeps this file usable on non-Mac machines.)"
+      "Host *"
+      "  IgnoreUnknown UseKeychain"
+      "  UseKeychain yes"
+      "  AddKeysToAgent yes"
+    )
+  else
+    ssh_block=(
+      ""
+      "# Load keys into the agent on first use."
+      "Host *"
+      "  AddKeysToAgent yes"
+    )
+  fi
+  echo "         With AddKeysToAgent, ssh adds a key to the agent the first time it's"
+  echo "         used, so no ssh-add is needed in startup files."
+  if ask "Add AddKeysToAgent yes to ~/.ssh/config?"; then
+    if [[ ! -d $HOME/.ssh ]]; then
+      mkdir -m 700 "$HOME/.ssh"
+    fi
+    append_lines "$SSH_CONFIG" "${ssh_block[@]}"
+    chmod 600 "$SSH_CONFIG"
+    fixed "~/.ssh/config has AddKeysToAgent yes"
+  else
+    todo "add 'AddKeysToAgent yes' under 'Host *' in ~/.ssh/config"
+  fi
+fi
+
+ssh-add -l > /dev/null 2>&1
+agent_status=$?
+case $agent_status in
+  0) ok "an ssh-agent is running and has keys loaded" ;;
+  1) ok "an ssh-agent is running (no keys loaded yet; they load on first use)" ;;
+  *)
+    case $PLATFORM in
+      OSX)
+        todo "no ssh-agent found. macOS starts one for you (launchd); try a new Terminal window."
+        ;;
+      LINUX)
+        todo "no ssh-agent found in this shell."
+        note "Desktop sessions normally start one (GNOME uses gcr-ssh-agent; check"
+        note "'systemctl --user status gcr-ssh-agent.socket'). Over ssh there is none"
+        note "unless you forward yours with 'ssh -A'."
+        ;;
+      WSL)
+        todo "no ssh-agent found. WSL doesn't start one."
+        note "Simplest: 'sudo apt install keychain', then add to $(pretty "${LOGIN_FILE:-$HOME/.bash_profile}"):"
+        note "    eval \"\$(keychain --eval --quiet)\""
+        note "Or bridge to the Windows ssh-agent (search: wsl-ssh-agent, npiperelay)."
+        ;;
+    esac
+    ;;
+esac
+if [[ $PLATFORM == "OSX" ]]; then
+  note "To store a key's passphrase in the Keychain once:"
+  note "    ssh-add --apple-use-keychain ~/.ssh/id_ed25519"
+fi
+
+################################################################################
+section "7. leftovers from the old layout"
+
+leftovers="false"
+
+if [[ -e $HOME/.bash_logout ]]; then
+  old_logout_regex='^[[:space:]]*[^#[:space:]].*\.bash_logout_xtras'
+  if command grep -Eq "$old_logout_regex" "$HOME/.bash_logout"; then
+    leftovers="true"
+    if ask "~/.bash_logout sources the old ~/.bash_logout_xtras (no longer used). Comment that out?"; then
+      comment_out_matching "$HOME/.bash_logout" "$old_logout_regex"
+      fixed "commented out the .bash_logout_xtras line in ~/.bash_logout"
+    else
+      todo "remove the .bash_logout_xtras line from ~/.bash_logout"
+    fi
+  fi
+fi
+
+for old_file in .bashrc_xtras .bash_logout_xtras; do
+  if [[ -e $HOME/$old_file ]]; then
+    leftovers="true"
+    todo "~/$old_file is from the old layout and unused; delete it"
+  fi
+done
+
+if [[ -d $HOME/bashlogs ]]; then
+  leftovers="true"
+  todo "~/bashlogs is from the old layout and unused; delete it"
+fi
+
+if [[ $(command git -C "$HOME" rev-parse --show-toplevel 2>/dev/null) == "$HOME" ]]; then
+  leftovers="true"
+  todo "~ is still a git repository; remove ~/.git once you're sure"
+  note "Until then, git commands anywhere under ~ that aren't inside another repo"
+  note "act on it."
+fi
+
+if [[ $leftovers == "false" ]]; then
+  ok "nothing left over"
+fi
+
+################################################################################
+section "8. trying it out"
+
+# Start real shells the way a terminal or ssh would, and see whether
+# bashrc_xtras loaded. This catches anything the checks above misread.
+test_command='printf "BASH_ENVIRONMENT_TEST:%s\n" "${BASH_ENVIRONMENT_DIR:-none}"'
+
+# Prints the directory the test shell loaded bashrc_xtras from ("none" if it
+# didn't), followed by any other output the shell produced while starting.
+run_test_shell() {
+  local output
+  output=$("$LOGIN_SHELL" "$@" "$test_command" < /dev/null 2>&1)
+  local loaded
+  loaded=$(printf '%s\n' "$output" | sed -n 's/^BASH_ENVIRONMENT_TEST://p' | tail -1)
+  echo "${loaded:-none}"
+  # Without a terminal, interactive bash complains about job control. Ignore
+  # that; show anything else.
+  printf '%s\n' "$output" |
+    command grep -v -e '^BASH_ENVIRONMENT_TEST:' \
+                    -e 'cannot set terminal process group' \
+                    -e 'no job control in this shell' |
+    command grep -v '^$' || true
+}
+
+check_test_shell() {
+  local description=$1
+  shift
+  local result loaded extra
+  result=$(run_test_shell "$@")
+  loaded=$(printf '%s\n' "$result" | head -1)
+  extra=$(printf '%s\n' "$result" | tail -n +2)
+  if [[ $loaded == "$INSTALL_DIR" ]]; then
+    ok "$description loads bashrc_xtras"
+  elif [[ $loaded == "none" ]]; then
+    todo "$description does NOT load bashrc_xtras"
+  else
+    todo "$description loads bashrc_xtras from $loaded, not $INSTALL_DIR"
+  fi
+  if [[ -n $extra ]]; then
+    note "it printed this while starting:"
+    printf '%s\n' "$extra" | sed 's/^/             /'
+  fi
+}
+
+check_test_shell "a login shell (ssh, macOS Terminal/iTerm)" -lic
+check_test_shell "a non-login shell (Linux terminal windows)" -ic
+
+# Non-interactive shells must print nothing, or scp and rsync break.
+quiet_output=$("$LOGIN_SHELL" -lc 'true' < /dev/null 2>&1)
+if [[ -z $quiet_output ]]; then
+  ok "non-interactive shells start silently (scp/rsync safe)"
+else
+  todo "a non-interactive login shell prints output, which can break scp/rsync:"
+  printf '%s\n' "$quiet_output" | sed 's/^/             /'
+fi
+
+################################################################################
+echo
+if (( ${#REMAINING[@]} == 0 )); then
+  echo "Everything checks out. Open a new terminal to start using it."
+  exit 0
+else
+  echo "Still to do:"
+  printf '  * %s\n' "${REMAINING[@]}"
+  echo
+  echo "Rerun $(pretty "$INSTALL_DIR")/install after fixing these."
+  exit 1
+fi

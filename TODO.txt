@@ -1,0 +1,7 @@
+* Check that everything that used color_swatch gets a modernised approach.
+  * It was largely a helper to say COL_BLUE to turn blue, etc. We can get
+    rid of all the old defs that were based on the ANSI terminal and replace
+    with something that is 256-color aware.
+  * Essentially, get rid of everything under color_swatch -v and replace with
+    something from color_swatch -g
+
