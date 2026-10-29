@@ -4,4 +4,10 @@
     with something that is 256-color aware.
   * Essentially, get rid of everything under color_swatch -v and replace with
     something from color_swatch -g
+  * color_swatch should probably show all colors (along with their bold,
+    underlined, and other modified versions.) 
+    * I'd do the 'other modified versions' as command-line options.
+    * Do the "filter out stuff that's too dark or too red for a prompt" as
+      an option, also. install can use that option when it needs to use
+      color_swatch as a picker.
 
