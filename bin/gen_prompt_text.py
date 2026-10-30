@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-# usage: gen_prompt_text.py LAST_EXIT_CODE PROMPT_COLOR ERROR_COLOR
+# usage: gen_prompt_text.py LAST_EXIT_CODE PROMPT_STYLE ERROR_STYLE
 #
-# The colors are 256-color numbers (0-255). PROMPT_COLOR is used when
-# LAST_EXIT_CODE is 0, ERROR_COLOR otherwise.
+# A style is a 256-color number (0-255), optionally followed by attributes,
+# separated by commas: e.g. "114" or "196,bold,underline". The attributes are
+# bold, dim, italic, underline and inverse. An empty style means the terminal's
+# default. PROMPT_STYLE is used when LAST_EXIT_CODE is 0, ERROR_STYLE otherwise.
+# ERROR_STYLE must include a color; without one, the prompt complains.
+# Anything unrecognized in a style is reported (on stderr, so at every prompt)
+# and otherwise ignored.
 #
 # Prints shell assignments for the caller to eval:
 #   PROMPT_COL  the prompt, with color, ready for PS1
@@ -46,8 +51,9 @@ class Style:
   color: int = None    # 256-color number; None means the terminal's default
   bold: bool = False
   dim: bool = False
+  italic: bool = False
   underline: bool = False
-  invert: bool = False
+  inverse: bool = False
 
 
 DEFAULT = Style()
@@ -78,10 +84,12 @@ def changes_needed(old, new):
     codes.append('1')
   if new.dim and not old.dim:
     codes.append('2')
+  if new.italic != old.italic:
+    codes.append('3' if new.italic else '23')
   if new.underline != old.underline:
     codes.append('4' if new.underline else '24')
-  if new.invert != old.invert:
-    codes.append('7' if new.invert else '27')
+  if new.inverse != old.inverse:
+    codes.append('7' if new.inverse else '27')
   if new.color != old.color:
     codes.append('39' if new.color is None else '38;5;{}'.format(new.color))
   return codes
@@ -129,11 +137,14 @@ def bold(on):
 def dim(on):
   return styled(dim=on)
 
+def italic(on):
+  return styled(italic=on)
+
 def underline(on):
   return styled(underline=on)
 
-def invert(on):
-  return styled(invert=on)
+def inverse(on):
+  return styled(inverse=on)
 
 
 def space():
@@ -142,11 +153,26 @@ def space():
     text(' ')
 
 
-def parse_color(arg):
-  """A 256-color number, or None (terminal default) if arg isn't one."""
-  if arg.isdigit() and 0 <= int(arg) <= 255:
-    return int(arg)
-  return None
+ATTRIBUTES = ('bold', 'dim', 'italic', 'underline', 'inverse')
+
+
+def parse_style(spec, description):
+  """The style changes a spec like "196,bold,underline" asks for, as a dict
+  for styled(). Complains on stderr about anything it doesn't understand."""
+  changes = {}
+  for word in spec.split(','):
+    word = word.strip().lower()
+    if not word:
+      continue
+    if word.isdigit() and 0 <= int(word) <= 255:
+      changes['color'] = int(word)
+    elif word in ATTRIBUTES:
+      changes[word] = True
+    else:
+      sys.stderr.write('gen_prompt_text: {} "{}": don\'t know "{}" (expected a color '
+                       '0-255 or one of: {})\n'.format(
+                           description, spec, word, ', '.join(ATTRIBUTES)))
+  return changes
 
 
 def xtras_is_stale():
@@ -163,13 +189,17 @@ def xtras_is_stale():
 
 
 last_exit_code = sys.argv[1]
-prompt_color = parse_color(sys.argv[2])
-error_color = parse_color(sys.argv[3])
+normal_prompt_style = parse_style(sys.argv[2], 'prompt style')
+error_prompt_style = parse_style(sys.argv[3], 'error style')
+if 'color' not in error_prompt_style:
+  sys.stderr.write('gen_prompt_text: no error color set, so failed commands won\'t '
+                   'show. Set PROMPT_ERROR_COLOR in ~/.bashrc (e.g. 196), or rerun '
+                   'install.\n')
 
 if last_exit_code == '0':
-  line_color = prompt_color
+  line_style = normal_prompt_style
 else:
-  line_color = error_color
+  line_style = error_prompt_style
 
 clock = datetime.now().strftime('%H:%M')
 branch = os.environ.get('GIT_BRANCH', '')
@@ -181,7 +211,8 @@ stale = xtras_is_stale()
 
 def stale_warning():
   if stale:
-    with color(error_color), invert(True):
+    # Only the error style's color: its other attributes would make this odd.
+    with color(error_prompt_style.get('color')), inverse(True):
       # I used to use ⚙, but it's too wide to render properly.
       text('!', title=False)
 
@@ -191,7 +222,7 @@ reset()
 # First line: ╓HH:MM (branch) /current/dir
 stale_warning()
 text('╓', title=False)
-with color(line_color):
+with styled(**line_style):
   text(clock, title=False)
   space()
   if branch:

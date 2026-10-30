@@ -13,7 +13,7 @@
 # Steps:
 #   1. bash version (needs BASH_ENVIRONMENT_MIN_BASH, see lib/platform.sh)
 #   2. login shell is a new-enough bash
-#   3. ~/.bashrc sets the prompt color and sources bashrc_xtras
+#   3. ~/.bashrc sets the prompt and error colors and sources bashrc_xtras
 #   4. the file login shells read (~/.bash_profile etc.) sources ~/.bashrc
 #   5. ~/.vimrc sources vimrc
 #   6. ssh-agent (advice only, plus AddKeysToAgent in ~/.ssh/config)
@@ -70,7 +70,7 @@ fi
 ################################################################################
 # bash 5.2+ from here on.
 
-source "$INSTALL_DIR/bin/color_swatch"
+COLOR_SWATCH="$INSTALL_DIR/bin/color_swatch"
 
 STAMP=$(date +%Y%m%d-%H%M%S)
 declare -a BACKED_UP=()
@@ -254,11 +254,7 @@ if [[ -e $BASHRC ]]; then
     }
 
     declare -a allowed_colors=()
-    for color in $(seq 16 255); do
-      if prompt_color_ok "$color"; then
-        allowed_colors+=("$color")
-      fi
-    done
+    mapfile -t allowed_colors < <("$COLOR_SWATCH" --prompt-colors)
     host=$(hostname -s 2>/dev/null || hostname)
     host_hash=$(printf '%s' "$host" | cksum | cut -d' ' -f1)
     chosen_color=${allowed_colors[host_hash % ${#allowed_colors[@]}]}
@@ -268,14 +264,14 @@ if [[ -e $BASHRC ]]; then
     show_color_sample "$chosen_color"
     if ! ask "Use color $chosen_color?"; then
       echo
-      show_prompt_color_grid | sed 's/^/         /'
+      "$COLOR_SWATCH" -g | sed 's/^/         /'
       echo
       while true; do
         read -r -p "         Color number (Enter for $chosen_color): " typed_color
         if [[ -z $typed_color ]]; then
           break
         fi
-        if ! prompt_color_ok "$typed_color"; then
+        if ! [[ $typed_color =~ ^[0-9]+$ ]] || ! "$COLOR_SWATCH" --prompt-ok "$typed_color"; then
           echo "         $typed_color isn't one of the colors shown."
           continue
         fi
@@ -291,6 +287,20 @@ if [[ -e $BASHRC ]]; then
       "# This machine's prompt color for bash_environment (see: color_swatch -g)." \
       "PREFERRED_PROMPT_COLOR=$chosen_color"
     fixed "prompt color: $chosen_color"
+  fi
+
+  # Error color: the prompt's style after a command fails.
+  error_regex='^[[:space:]]*(export[[:space:]]+)?PROMPT_ERROR_COLOR='
+  if command grep -Eq "$error_regex" "$BASHRC"; then
+    ok "error color: $(command grep -E "$error_regex" "$BASHRC" | tail -1 | sed 's/^[^=]*=//')"
+  elif ask "Add PROMPT_ERROR_COLOR=196 (red) to ~/.bashrc? The prompt turns this color after a failed command."; then
+    append_lines "$BASHRC" \
+      "" \
+      "# The prompt's style after a command fails (see bashrc_xtras for the format)." \
+      "PROMPT_ERROR_COLOR=196"
+    fixed "error color: 196"
+  else
+    todo "set PROMPT_ERROR_COLOR in ~/.bashrc (e.g. 196); without it, failed commands don't show"
   fi
 
   # Source line.
@@ -381,6 +391,10 @@ resolve_link() {
   fi
   echo "$(cd "$(dirname "$target")" 2>/dev/null && pwd -P)/$(basename "$target")"
 }
+
+if [[ ! -e $INSTALL_DIR/vimrc ]]; then
+  todo "$(pretty "$INSTALL_DIR")/vimrc is missing; ~/.vimrc's source line will fail"
+fi
 
 vim_source_regex='^[[:space:]]*:?so(urce)?[[:space:]].*/vimrc[[:space:]]*$'
 if [[ -L $VIMRC && $(resolve_link "$VIMRC") == "$INSTALL_DIR/vimrc" ]]; then

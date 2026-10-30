@@ -1,152 +1,273 @@
-#!/bin/bash
-
-#http://en.wikipedia.org/wiki/ANSI_escape_code
-
-
-#The fully-escaped stuff:
-export ESC_BLACK='\\[\\033[30m\\]'
-export ESC_RED='\\[\\033[31m\\]'
-export ESC_GREEN='\\[\\033[32m\\]'
-export ESC_BROWN='\\[\\033[33m\\]'
-export ESC_BLUE='\\[\\033[34m\\]'
-export ESC_PURPLE='\\[\\033[35m\\]'
-export ESC_CYAN='\\[\\033[36m\\]'
-export ESC_WHITE='\\[\\033[37m\\]'
-export ESC_UNDER='\\[\\033[4m\\]'
-export ESC_UNDER_OFF='\\[\\033[24m\\]'
-export ESC_BOLD='\\[\\033[1m\\]'
-export ESC_BOLD_OFF='\\[\\033[21m\\]' # NOT WIDELY SUPPORTED
-export ESC_DARK='\\[\\033[2m\\]'
-export ESC_DARK_OFF='\\[\\033[22m\\]'
-export ESC_INVERT='\\[\\033[7m\\]'
-export ESC_INVERT_OFF='\\[\\033[27m\\]'
-export ESC_RESET='\\[\\033[0m\\]'
-
-#PS1 uses the extra \[ and \] to recognize sequences of characters that should
-#be ignored in computing the width of the prompt. If you're using escape
-#sequences in a prompt, you'll need to use these versions.
-export PC_BLACK='\[\033[30m\]'
-export PC_RED='\[\033[31m\]'
-export PC_GREEN='\[\033[32m\]'
-export PC_BROWN='\[\033[33m\]'
-export PC_BLUE='\[\033[34m\]'
-export PC_PURPLE='\[\033[35m\]'
-export PC_CYAN='\[\033[36m\]'
-export PC_WHITE='\[\033[37m\]'
-export PC_UNDER='\[\033[4m\]'
-export PC_UNDER_OFF='\[\033[24m\]'
-export PC_BOLD='\[\033[1m\]'
-export PC_BOLD_OFF='\[\033[21m\]' # NOT WIDELY SUPPORTED
-export PC_DARK='\[\033[2m\]'
-export PC_DARK_OFF='\[\033[22m\]'
-export PC_INVERT='\[\033[7m\]'
-export PC_INVERT_OFF='\[\033[27m\]'
-export PC_RESET='\[\033[0m\]'
-
-#and.... bare: (For use on the command line with echo -e, for example)
-export COL_BLACK='\033[30m'
-export COL_RED='\033[31m'
-export COL_GREEN='\033[32m'
-export COL_BROWN='\033[33m'
-export COL_BLUE='\033[34m'
-export COL_PURPLE='\033[35m'
-export COL_CYAN='\033[36m'
-export COL_WHITE='\033[37m'
-export COL_UNDER='\033[4m'
-export COL_UNDER_OFF='\033[24m'
-export COL_BOLD='\033[1m'
-export COL_BOLD_OFF='\033[21m' # NOT WIDELY SUPPORTED
-export COL_DARK='\033[2m'
-export COL_DARK_OFF='\033[22m'
-export COL_INVERT='\033[7m'
-export COL_INVERT_OFF='\033[27m'
-export COL_RESET='\033[0m'
-
-################################################################################
-# 256-color support for the prompt.
+#!/usr/bin/env python3
+# coding: utf-8
 #
+# color_swatch: look at the terminal's 256 colors and how it renders them.
+#
+# usage: color_swatch [-g] [-n] [-b] [-d] [-I] [-u] [-i]
+#
+#   (default) grid of all 256 colors, followed by samples of each text
+#        attribute
+#   -g   only the colors allowed for the prompt (no attribute samples)
+#   -n   list number, name and RGB value instead of a grid
+#   -b -d -I -u -i
+#        draw in bold, dim, italic, underline, inverse (combinable, e.g. -bu)
+#
+#   With -n, output to a terminal is in columns sized to the window; output
+#   to a pipe or file is one plain, uncolored entry per line, for grep.
+#
+# For install:
+#   --prompt-ok N      exit 0 if N may be used as a prompt color
+#   --prompt-colors    print the colors allowed for the prompt, one per line
+#
+# Assumes a black background.
+#
+# Color names: the de facto xterm list, from https://github.com/jonasjacek/colors
+# (CC BY-SA 4.0). Names repeat (19 and 20 are both Blue3), so search by name
+# or RGB, but refer to colors by number.
+#
+# TODO: The Mac is still on python 3.9. Keep this 3.9-compatible until every
+#       machine runs 3.10+.
+
+import argparse
+import shutil
+import sys
+
+NAMES = [
+  'Black', 'Maroon', 'Green', 'Olive', 'Navy', 'Purple',  # 0-5
+  'Teal', 'Silver', 'Grey', 'Red', 'Lime', 'Yellow',  # 6-11
+  'Blue', 'Fuchsia', 'Aqua', 'White', 'Grey0', 'NavyBlue',  # 12-17
+  'DarkBlue', 'Blue3', 'Blue3', 'Blue1', 'DarkGreen', 'DeepSkyBlue4',  # 18-23
+  'DeepSkyBlue4', 'DeepSkyBlue4', 'DodgerBlue3', 'DodgerBlue2', 'Green4', 'SpringGreen4',  # 24-29
+  'Turquoise4', 'DeepSkyBlue3', 'DeepSkyBlue3', 'DodgerBlue1', 'Green3', 'SpringGreen3',  # 30-35
+  'DarkCyan', 'LightSeaGreen', 'DeepSkyBlue2', 'DeepSkyBlue1', 'Green3', 'SpringGreen3',  # 36-41
+  'SpringGreen2', 'Cyan3', 'DarkTurquoise', 'Turquoise2', 'Green1', 'SpringGreen2',  # 42-47
+  'SpringGreen1', 'MediumSpringGreen', 'Cyan2', 'Cyan1', 'DarkRed', 'DeepPink4',  # 48-53
+  'Purple4', 'Purple4', 'Purple3', 'BlueViolet', 'Orange4', 'Grey37',  # 54-59
+  'MediumPurple4', 'SlateBlue3', 'SlateBlue3', 'RoyalBlue1', 'Chartreuse4', 'DarkSeaGreen4',  # 60-65
+  'PaleTurquoise4', 'SteelBlue', 'SteelBlue3', 'CornflowerBlue', 'Chartreuse3', 'DarkSeaGreen4',  # 66-71
+  'CadetBlue', 'CadetBlue', 'SkyBlue3', 'SteelBlue1', 'Chartreuse3', 'PaleGreen3',  # 72-77
+  'SeaGreen3', 'Aquamarine3', 'MediumTurquoise', 'SteelBlue1', 'Chartreuse2', 'SeaGreen2',  # 78-83
+  'SeaGreen1', 'SeaGreen1', 'Aquamarine1', 'DarkSlateGray2', 'DarkRed', 'DeepPink4',  # 84-89
+  'DarkMagenta', 'DarkMagenta', 'DarkViolet', 'Purple', 'Orange4', 'LightPink4',  # 90-95
+  'Plum4', 'MediumPurple3', 'MediumPurple3', 'SlateBlue1', 'Yellow4', 'Wheat4',  # 96-101
+  'Grey53', 'LightSlateGrey', 'MediumPurple', 'LightSlateBlue', 'Yellow4', 'DarkOliveGreen3',  # 102-107
+  'DarkSeaGreen', 'LightSkyBlue3', 'LightSkyBlue3', 'SkyBlue2', 'Chartreuse2', 'DarkOliveGreen3',  # 108-113
+  'PaleGreen3', 'DarkSeaGreen3', 'DarkSlateGray3', 'SkyBlue1', 'Chartreuse1', 'LightGreen',  # 114-119
+  'LightGreen', 'PaleGreen1', 'Aquamarine1', 'DarkSlateGray1', 'Red3', 'DeepPink4',  # 120-125
+  'MediumVioletRed', 'Magenta3', 'DarkViolet', 'Purple', 'DarkOrange3', 'IndianRed',  # 126-131
+  'HotPink3', 'MediumOrchid3', 'MediumOrchid', 'MediumPurple2', 'DarkGoldenrod', 'LightSalmon3',  # 132-137
+  'RosyBrown', 'Grey63', 'MediumPurple2', 'MediumPurple1', 'Gold3', 'DarkKhaki',  # 138-143
+  'NavajoWhite3', 'Grey69', 'LightSteelBlue3', 'LightSteelBlue', 'Yellow3', 'DarkOliveGreen3',  # 144-149
+  'DarkSeaGreen3', 'DarkSeaGreen2', 'LightCyan3', 'LightSkyBlue1', 'GreenYellow', 'DarkOliveGreen2',  # 150-155
+  'PaleGreen1', 'DarkSeaGreen2', 'DarkSeaGreen1', 'PaleTurquoise1', 'Red3', 'DeepPink3',  # 156-161
+  'DeepPink3', 'Magenta3', 'Magenta3', 'Magenta2', 'DarkOrange3', 'IndianRed',  # 162-167
+  'HotPink3', 'HotPink2', 'Orchid', 'MediumOrchid1', 'Orange3', 'LightSalmon3',  # 168-173
+  'LightPink3', 'Pink3', 'Plum3', 'Violet', 'Gold3', 'LightGoldenrod3',  # 174-179
+  'Tan', 'MistyRose3', 'Thistle3', 'Plum2', 'Yellow3', 'Khaki3',  # 180-185
+  'LightGoldenrod2', 'LightYellow3', 'Grey84', 'LightSteelBlue1', 'Yellow2', 'DarkOliveGreen1',  # 186-191
+  'DarkOliveGreen1', 'DarkSeaGreen1', 'Honeydew2', 'LightCyan1', 'Red1', 'DeepPink2',  # 192-197
+  'DeepPink1', 'DeepPink1', 'Magenta2', 'Magenta1', 'OrangeRed1', 'IndianRed1',  # 198-203
+  'IndianRed1', 'HotPink', 'HotPink', 'MediumOrchid1', 'DarkOrange', 'Salmon1',  # 204-209
+  'LightCoral', 'PaleVioletRed1', 'Orchid2', 'Orchid1', 'Orange1', 'SandyBrown',  # 210-215
+  'LightSalmon1', 'LightPink1', 'Pink1', 'Plum1', 'Gold1', 'LightGoldenrod2',  # 216-221
+  'LightGoldenrod2', 'NavajoWhite1', 'MistyRose1', 'Thistle1', 'Yellow1', 'LightGoldenrod1',  # 222-227
+  'Khaki1', 'Wheat1', 'Cornsilk1', 'Grey100', 'Grey3', 'Grey7',  # 228-233
+  'Grey11', 'Grey15', 'Grey19', 'Grey23', 'Grey27', 'Grey30',  # 234-239
+  'Grey35', 'Grey39', 'Grey42', 'Grey46', 'Grey50', 'Grey54',  # 240-245
+  'Grey58', 'Grey62', 'Grey66', 'Grey70', 'Grey74', 'Grey78',  # 246-251
+  'Grey82', 'Grey85', 'Grey89', 'Grey93',  # 252-255
+]
+
+# 0-15: the list's nominal values. Each terminal theme redefines these, so they
+# describe what the colors are meant to be, not what you'll see.
+BASIC_RGB = [
+  (0, 0, 0), (128, 0, 0), (0, 128, 0), (128, 128, 0),
+  (0, 0, 128), (128, 0, 128), (0, 128, 128), (192, 192, 192),
+  (128, 128, 128), (255, 0, 0), (0, 255, 0), (255, 255, 0),
+  (0, 0, 255), (255, 0, 255), (0, 255, 255), (255, 255, 255),
+]
+BASIC_CAVEAT = ('* 0-15 are redefined by each terminal theme, so how they look\n'
+                '  (and their real RGB values) vary from terminal to terminal.')
+
+CUBE_LEVELS = [0, 95, 135, 175, 215, 255]
+
 # A red prompt means the last command failed, so the normal prompt color must
-# never be mistaken for red. These colors are never offered for the prompt:
+# never be mistaken for red. These are never offered for the prompt:
 #   * reds and their near neighbors: HSV hue within 28 degrees above or 45
 #     below pure red, at saturation >= 0.30 (maroons, crimsons, red-oranges,
 #     red-pinks)
 #   * anything too dark to read on a black background (relative luminance
 #     below 0.10: the darkest blues, greens and purples, and the bottom of the
 #     gray ramp)
-# The 16 basic colors (0-15) aren't offered either: each terminal theme
-# redefines them, so their appearance isn't predictable.
-# The list was computed once and pasted in rather than computed at startup.
-PROMPT_COLOR_EXCLUDED=" 16 17 18 19 20 21 22 23 24 52 53 54 55 56 57 88 89 90 91
- 124 125 131 132 160 161 162 166 167 168 169 173 174 175 196 197 198 199 202
- 203 204 205 206 209 210 211 212 216 217 218 232 233 234 235 236 237 238 239
- 240 "
-PROMPT_COLOR_EXCLUDED=${PROMPT_COLOR_EXCLUDED//$'\n'/ }
-
-# Succeeds if $1 is a 256-color number that may be used for the prompt.
-prompt_color_ok() {
-  local color=$1
-  [[ $color =~ ^[0-9]+$ ]] || return 1
-  (( color >= 16 && color <= 255 )) || return 1
-  [[ $PROMPT_COLOR_EXCLUDED != *" $color "* ]]
+#   * 0-15, whose look depends on the terminal theme
+# Computed once and pasted in, rather than computed every time.
+PROMPT_EXCLUDED = set(range(0, 16)) | {
+  16, 17, 18, 19, 20, 21, 22, 23, 24, 52, 53, 54, 55, 56, 57, 88, 89, 90, 91,
+  124, 125, 131, 132, 160, 161, 162, 166, 167, 168, 169, 173, 174, 175, 196,
+  197, 198, 199, 202, 203, 204, 205, 206, 209, 210, 211, 212, 216, 217, 218,
+  232, 233, 234, 235, 236, 237, 238, 239, 240,
 }
 
-# Prints the usable prompt colors as a grid of their own numbers. Excluded
-# colors are left blank.
-show_prompt_color_grid() {
-  local half row col color
-  local cell_format=$'\033[38;5;%dm%4d\033[0m'
-  # The 6x6x6 cube (16-231) as two bands of three 6x6 blocks.
-  for half in 0 1; do
-    for row in 0 1 2 3 4 5; do
-      for col in $(seq 0 17); do
-        color=$(( 16 + (half * 3 + col / 6) * 36 + row * 6 + col % 6 ))
-        if prompt_color_ok "$color"; then
-          printf "$cell_format" "$color" "$color"
-        else
-          printf '    '
-        fi
-        if (( col % 6 == 5 )); then printf '  '; fi
-      done
-      printf '\n'
-    done
-    printf '\n'
-  done
-  # The gray ramp (232-255).
-  for row in 0 1; do
-    for col in $(seq 0 11); do
-      color=$(( 232 + row * 12 + col ))
-      if prompt_color_ok "$color"; then
-        printf "$cell_format" "$color" "$color"
-      else
-        printf '    '
-      fi
-    done
-    printf '\n'
-  done
-}
 
-if [ "$1" == "-g" ]; then
-  show_prompt_color_grid
-fi
+def rgb(color):
+  if color < 16:
+    return BASIC_RGB[color]
+  if color >= 232:
+    level = 8 + 10 * (color - 232)
+    return (level, level, level)
+  cube = color - 16
+  return (CUBE_LEVELS[cube // 36], CUBE_LEVELS[cube // 6 % 6], CUBE_LEVELS[cube % 6])
 
-if [ "$1" == "-v" ] || [ "$1" == "-?" ]; then
-  echo -e  "$COL_RESET COL_RESET $COL_BOLD COL_BOLD $COL_DARK COL_BOLD&&COL_DARK $COL_RESET$COL_DARK COL_DARK $COL_DARK_OFF ${COL_UNDER}COL_UNDER$COL_UNDER_OFF"
-  echo -e  "$COL_BLACK COL_BLACK $COL_BOLD COL_BOLD $COL_DARK COL_BOLD&&COL_DARK $COL_RESET$COL_BLACK$COL_DARK COL_DARK $COL_DARK_OFF ${COL_UNDER}COL_UNDER$COL_UNDER_OFF"
-  echo -e    "$COL_RED COL_RED   $COL_BOLD COL_BOLD $COL_DARK COL_BOLD&&COL_DARK $COL_RESET$COL_RED$COL_DARK COL_DARK $COL_DARK_OFF ${COL_UNDER}COL_UNDER$COL_UNDER_OFF"
-  echo -e  "$COL_GREEN COL_GREEN $COL_BOLD COL_BOLD $COL_DARK COL_BOLD&&COL_DARK $COL_RESET$COL_GREEN$COL_DARK COL_DARK $COL_DARK_OFF ${COL_UNDER}COL_UNDER$COL_UNDER_OFF"
-  echo -e  "$COL_BROWN COL_BROWN $COL_BOLD COL_BOLD $COL_DARK COL_BOLD&&COL_DARK $COL_RESET$COL_BROWN$COL_DARK COL_DARK $COL_DARK_OFF ${COL_UNDER}COL_UNDER$COL_UNDER_OFF"
-  echo -e   "$COL_BLUE COL_BLUE  $COL_BOLD COL_BOLD $COL_DARK COL_BOLD&&COL_DARK $COL_RESET$COL_BLUE$COL_DARK COL_DARK $COL_DARK_OFF ${COL_UNDER}COL_UNDER$COL_UNDER_OFF"
-  echo -e "$COL_PURPLE COL_PURPLE$COL_BOLD COL_BOLD $COL_DARK COL_BOLD&&COL_DARK $COL_RESET$COL_PURPLE$COL_DARK COL_DARK $COL_DARK_OFF ${COL_UNDER}COL_UNDER$COL_UNDER_OFF"
-  echo -e   "$COL_CYAN COL_CYAN  $COL_BOLD COL_BOLD $COL_DARK COL_BOLD&&COL_DARK $COL_RESET$COL_CYAN$COL_DARK COL_DARK $COL_DARK_OFF ${COL_UNDER}COL_UNDER$COL_UNDER_OFF"
-  echo -e  "$COL_WHITE COL_WHITE $COL_BOLD COL_BOLD $COL_DARK COL_BOLD&&COL_DARK $COL_RESET$COL_WHITE$COL_DARK COL_DARK $COL_DARK_OFF ${COL_UNDER}COL_UNDER$COL_UNDER_OFF"
 
-  echo -e  "$COL_INVERT$COL_RESET COL_RESET $COL_BOLD COL_BOLD $COL_DARK COL_BOLD&&COL_DARK $COL_RESET$COL_DARK COL_DARK $COL_DARK_OFF ${COL_UNDER}COL_UNDER$COL_UNDER_OFF$COL_INVERT_OFF"
-  echo -e  "$COL_INVERT$COL_BLACK COL_BLACK $COL_BOLD COL_BOLD $COL_DARK COL_BOLD&&COL_DARK $COL_RESET$COL_BLACK$COL_DARK COL_DARK $COL_DARK_OFF ${COL_UNDER}COL_UNDER$COL_UNDER_OFF$COL_INVERT_OFF"
-  echo -e    "$COL_INVERT$COL_RED COL_RED   $COL_BOLD COL_BOLD $COL_DARK COL_BOLD&&COL_DARK $COL_RESET$COL_RED$COL_DARK COL_DARK $COL_DARK_OFF ${COL_UNDER}COL_UNDER$COL_UNDER_OFF$COL_INVERT_OFF"
-  echo -e  "$COL_INVERT$COL_GREEN COL_GREEN $COL_BOLD COL_BOLD $COL_DARK COL_BOLD&&COL_DARK $COL_RESET$COL_GREEN$COL_DARK COL_DARK $COL_DARK_OFF ${COL_UNDER}COL_UNDER$COL_UNDER_OFF$COL_INVERT_OFF"
-  echo -e  "$COL_INVERT$COL_BROWN COL_BROWN $COL_BOLD COL_BOLD $COL_DARK COL_BOLD&&COL_DARK $COL_RESET$COL_BROWN$COL_DARK COL_DARK $COL_DARK_OFF ${COL_UNDER}COL_UNDER$COL_UNDER_OFF$COL_INVERT_OFF"
-  echo -e   "$COL_INVERT$COL_BLUE COL_BLUE  $COL_BOLD COL_BOLD $COL_DARK COL_BOLD&&COL_DARK $COL_RESET$COL_BLUE$COL_DARK COL_DARK $COL_DARK_OFF ${COL_UNDER}COL_UNDER$COL_UNDER_OFF$COL_INVERT_OFF"
-  echo -e "$COL_INVERT$COL_PURPLE COL_PURPLE$COL_BOLD COL_BOLD $COL_DARK COL_BOLD&&COL_DARK $COL_RESET$COL_PURPLE$COL_DARK COL_DARK $COL_DARK_OFF ${COL_UNDER}COL_UNDER$COL_UNDER_OFF$COL_INVERT_OFF"
-  echo -e   "$COL_INVERT$COL_CYAN COL_CYAN  $COL_BOLD COL_BOLD $COL_DARK COL_BOLD&&COL_DARK $COL_RESET$COL_CYAN$COL_DARK COL_DARK $COL_DARK_OFF ${COL_UNDER}COL_UNDER$COL_UNDER_OFF$COL_INVERT_OFF"
-  echo -e  "$COL_INVERT$COL_WHITE COL_WHITE $COL_BOLD COL_BOLD $COL_DARK COL_BOLD&&COL_DARK $COL_RESET$COL_WHITE$COL_DARK COL_DARK $COL_DARK_OFF ${COL_UNDER}COL_UNDER$COL_UNDER_OFF$COL_INVERT_OFF"
-fi
+def prompt_ok(color):
+  return 0 <= color <= 255 and color not in PROMPT_EXCLUDED
+
+
+# SGR codes for the text attributes.
+BOLD, DIM, ITALIC, UNDERLINE, INVERSE = '1', '2', '3', '4', '7'
+
+
+def styled(s, color=None, attributes=()):
+  """s in the given color (None: terminal default) and attributes, then reset."""
+  codes = list(attributes)
+  if color is not None:
+    codes.append('38;5;{}'.format(color))
+  if not codes:
+    return s
+  return '\033[{}m{}\033[0m'.format(';'.join(codes), s)
+
+
+def cell(color, shown, attributes):
+  """A grid cell: the color's number drawn in itself, or blank if not shown."""
+  if not shown(color):
+    return '    '
+  return styled('{:4d}'.format(color), color, attributes)
+
+
+def show_grid(shown, attributes):
+  lines = []
+  # 0-15, as two rows of eight.
+  if any(shown(c) for c in range(16)):
+    for row in range(2):
+      lines.append(''.join(cell(row * 8 + col, shown, attributes) for col in range(8)) + ' *')
+    lines.append('')
+  # The 6x6x6 cube (16-231), as two bands of three 6x6 blocks.
+  for band in range(2):
+    for row in range(6):
+      line = ''
+      for block in range(3):
+        for col in range(6):
+          line += cell(16 + (band * 3 + block) * 36 + row * 6 + col, shown, attributes)
+        line += '  '
+      lines.append(line.rstrip())
+    lines.append('')
+  # The gray ramp (232-255), as two rows of twelve.
+  for row in range(2):
+    lines.append(''.join(cell(232 + row * 12 + col, shown, attributes) for col in range(12)))
+  if any(shown(c) for c in range(16)):
+    lines.append('')
+    lines.append(BASIC_CAVEAT)
+  print('\n'.join(lines))
+
+
+def show_attribute_samples():
+  colors = [None, 1, 196, 34, 33, 245]
+  headings = ['default', '1', '196', '34', '33', '245']
+  rows = [
+    ('normal', []),
+    ('bold', [BOLD]),
+    ('dim', [DIM]),
+    ('italic', [ITALIC]),
+    ('underline', [UNDERLINE]),
+    ('inverse', [INVERSE]),
+    ('bold+dim', [BOLD, DIM]),
+    ('bold+italic', [BOLD, ITALIC]),
+    ('bold+inverse', [BOLD, INVERSE]),
+  ]
+  print()
+  print('{:15}'.format('') + ''.join('{:10}'.format(h) for h in headings))
+  for label, attributes in rows:
+    print('{:15}'.format(label) + ''.join(styled('Sample', c, attributes) + '    ' for c in colors))
+  # How the terminal handles turning bold off. 22 is the correct code; some
+  # terminals treat 21 as double underline instead.
+  print()
+  print('{:15}'.format('bold, then 22') + '\033[1mbold\033[22m normal  (correct: second word normal)')
+  print('{:15}'.format('bold, then 21') + '\033[1mbold\033[21m ?\033[0m       (21 is often double underline)')
+
+
+def entry(color):
+  r, g, b = rgb(color)
+  marker = '*' if color < 16 else ' '
+  return '{:3d} {:17} {:3d},{:3d},{:3d}{}'.format(color, NAMES[color], r, g, b, marker)
+
+
+def show_names(shown, attributes):
+  colors = [c for c in range(256) if shown(c)]
+  if not sys.stdout.isatty():
+    # One plain entry per line, for grep.
+    for color in colors:
+      print(entry(color).rstrip())
+    return
+  width = len(entry(0))
+  gap = 3
+  terminal_width = shutil.get_terminal_size().columns
+  columns = max(1, (terminal_width + gap) // (width + gap))
+  rows = (len(colors) + columns - 1) // columns
+  # Down each column, then across, like ls.
+  for row in range(rows):
+    parts = []
+    for col in range(columns):
+      index = col * rows + row
+      if index < len(colors):
+        parts.append(styled(entry(colors[index]), colors[index], attributes))
+    print((' ' * gap).join(parts))
+  if any(c < 16 for c in colors):
+    print()
+    print(BASIC_CAVEAT)
+
+
+def main():
+  parser = argparse.ArgumentParser(
+      description="Show the terminal's 256 colors and how it renders them. "
+                  "With no options: all 256 colors, plus attribute samples.")
+  parser.add_argument('-g', action='store_true', help='only the colors allowed for the prompt')
+  parser.add_argument('-n', action='store_true', help='list number, name and RGB instead of a grid')
+  parser.add_argument('-b', action='store_true', help='bold')
+  parser.add_argument('-d', action='store_true', help='dim')
+  parser.add_argument('-I', action='store_true', help='italic')
+  parser.add_argument('-u', action='store_true', help='underline')
+  parser.add_argument('-i', action='store_true', help='inverse')
+  parser.add_argument('--prompt-ok', type=int, metavar='N',
+                      help='exit 0 if N may be used as a prompt color (for install)')
+  parser.add_argument('--prompt-colors', action='store_true',
+                      help='print the prompt colors, one per line (for install)')
+  args = parser.parse_args()
+
+  if args.prompt_ok is not None:
+    sys.exit(0 if prompt_ok(args.prompt_ok) else 1)
+  if args.prompt_colors:
+    for color in range(256):
+      if prompt_ok(color):
+        print(color)
+    return
+
+  attributes = []
+  for flag, code in ((args.b, BOLD), (args.d, DIM), (args.I, ITALIC),
+                     (args.u, UNDERLINE), (args.i, INVERSE)):
+    if flag:
+      attributes.append(code)
+
+  if args.g:
+    shown = prompt_ok
+  else:
+    shown = lambda color: True
+
+  if args.n:
+    show_names(shown, attributes)
+  else:
+    show_grid(shown, attributes)
+    if not args.g:
+      show_attribute_samples()
+
+
+main()

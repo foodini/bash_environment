@@ -2,8 +2,6 @@
 #
 # Sourced from ~/.bashrc. Run ./install from this directory to set that up.
 #
-# TODO:
-# * de-dupe the PATH? (got the path_dedup util, but not sure i need it.)
 
 # Everything here is for interactive use. Non-interactive shells (scripts,
 # scp, rsync, `ssh host cmd`) get nothing, and above all no output.
@@ -16,6 +14,7 @@ esac
 BASH_ENVIRONMENT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 export BASH_ENVIRONMENT_DIR
 
+# Gets us bash_environment_platform() and bash_environment_bash_ok()
 source "$BASH_ENVIRONMENT_DIR/lib/platform.sh"
 
 # Stop before anything that needs a newer bash. Everything above this point
@@ -69,27 +68,49 @@ if [[ -d $HOME/bin ]]; then
   pathpost "$HOME/bin"
 fi
 
-source "$BASH_ENVIRONMENT_DIR/bin/color_swatch"
-
-# The prompt color for this machine is set in ~/.bashrc (install offers to do
-# it). It's a 256-color number; see `color_swatch -g` for the choices.
-: "${PREFERRED_PROMPT_COLOR:=WHITE}"
+################################################################################
+# !!! THE PROMPT STYLES ARE NOT SET HERE. THEY'RE SET IN ~/.bashrc. !!!
+#
+# They're per-machine, and this file is shared by every machine through git.
+# install offers to add them to ~/.bashrc. They're read each time the prompt is
+# drawn, so after editing them run `rerc` (which re-sources ~/.bashrc), or
+# just assign one at the command line to try it out.
+#
+# A style is a 256-color number (see `color_swatch -g`), optionally followed by
+# attributes: bold, dim, italic, underline, inverse (preview them with
+# color_swatch's -b -d -I -u -i). For example:
+#
+# PREFERRED_PROMPT_COLOR=114,italic       # the normal prompt
+# PROMPT_ERROR_COLOR=196,bold,underline   # after a command fails
+#
+# An empty PREFERRED_PROMPT_COLOR means the terminal's default color.
+# PROMPT_ERROR_COLOR must be set; the prompt complains until it is.
+################################################################################
 
 alias tb="ntt '$BASH_ENVIRONMENT_DIR/bin/timer' 9:00 && beep"
 alias timer="ntt '$BASH_ENVIRONMENT_DIR/bin/timer'"
+
 #less -R preserves color and underline formatting, which I use addictively:
 alias less='less -R'
-alias rerc="source '$BASH_ENVIRONMENT_DIR/bashrc_xtras'"
+
+# ~/.bashrc sets the per-machine settings, then sources this file.
+alias rerc='source ~/.bashrc'
 alias virc="vi '$BASH_ENVIRONMENT_DIR/bashrc_xtras'"
 alias g='git status'
 alias gpo='git push origin "$GIT_BRANCH"'
+
+#go to the top level directory of the current git repo
 alias up='cd "$(git rev-parse --show-toplevel)"'
 
 export EDITOR='vim'
 
 #I get sick of doing grep --line-buffered. I can just do grep $B
+#TODO: This is an old way of going about this.... maybe grlb?
 export B=--line-buffered
 
+
+#TODO: These days, git is all I use. Is there a better way to accomplish what
+#      expand_scm is doing?
 #bind -x '"\eo":"expand_scm -o $COMP_TMP; source $COMP_TMP; rm $COMP_TMP"'
 bind -x '"\C-p":"expand_scm -c $COMP_TMP; source $COMP_TMP; rm $COMP_TMP"'
 bind -x '"\C-n":"expand_history $COMP_TMP; source $COMP_TMP; rm $COMP_TMP"'
@@ -101,7 +122,10 @@ fi
 
 FBH_DELIM="⦀"
 
+#TODO: WOW - take some time to look at the various things that you can set up with shopt.
+#      You can make ** match recursively, etc.
 shopt -s histappend
+
 
 HISTSIZE=5000
 HISTFILESIZE=10000
@@ -151,12 +175,13 @@ function fgrep {
   fi
 }
 
-# Needs work. How does the argument refer to the filename?
+#TODO: Needs work. How does the argument refer to the filename?
 # can you pipe for...done to an xargs?
 function git_do {
     for x in `command git status | command grep -E '((modified)|(added)):' | tr -s " " | cut -f2 -d" "`; do echo $x; done
 }
 
+# TODO: add some examples of args attached to each grep.
 # fxgrep takes all args up to and including the first that doesn't start with
 # '-' and does a find . | grep [everything else] | xargs grep [first arg set]
 # If there's only one arg not beginning with '-': find . | xargs grep [args]
@@ -212,6 +237,7 @@ function ggrep() {
   fxgrep -n "$@" '[.]go$'
 }
 
+#TODO: eliminate?
 #This one exists specifically to hilight output, so why protect it from
 #redirection?
 function hl {
@@ -239,7 +265,9 @@ bash_environment_on_exit() {
 }
 trap bash_environment_on_exit EXIT
 
-#function names must be >= 3 characters.
+#A bit hackish. It deletes the logfile that the bash_timer_manager uses, which causes it not to
+#run while the issued command ($@) is run. This is handy because bin/timer does its own magic with
+#the title bar and we don't want it fighting with this command.
 ntt() {
   rm -f "$LOGFILE"
   "$@"
@@ -324,7 +352,7 @@ gen_prompt_text() {
                  command git rev-parse --short HEAD 2>/dev/null)
     export GIT_BRANCH
 
-    eval "$(gen_prompt_text.py "$LAST_RETURN_VAL" "$PREFERRED_PROMPT_COLOR" 196)"
+    eval "$(gen_prompt_text.py "$LAST_RETURN_VAL" "$PREFERRED_PROMPT_COLOR" "$PROMPT_ERROR_COLOR")"
 
     if [ "$SUPPORTS_STATUS_LINE" == "true" ]; then
         ITERM2_PROMPT_MARK_TYPE=`type -t iterm2_prompt_mark`
